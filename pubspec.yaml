@@ -120,3 +120,5 @@ dependency_overrides:
     path: third_party/record_ios
   audioplayers_darwin:
     path: third_party/audioplayers_darwin
+  geolocator_apple:
+    path: third_party/geolocator_apple

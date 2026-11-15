@@ -195,24 +195,32 @@ enum ReleaseMode: String {
   private func setUpPlayerItemStatusObservation(
     _ playerItem: AVPlayerItem
   ) async throws {
-    try await withCheckedThrowingContinuation { continuation in
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+      // KVO may call back off the main actor. Serialize player state and
+      // continuation completion on the actor that owns this player.
+      var completed = false
       playerItemStatusObservation = playerItem.observe(\AVPlayerItem.status) {
-        [weak self] (playerItem, change) in
-        guard let self = self else {
-          return
-        }
+        [weak self] (playerItem, _) in
         let status = playerItem.status
-        self.eventHandler.onLog(message: "player status: \(status), change: \(change)")
-
-        switch status {
-        case .readyToPlay:
-          continuation.resume()
-        case .failed:
-          self.reset()
-          continuation.resume(throwing: AudioPlayerError.error("Failed to set playerItem"))
-        default:
-          // Do not resume continuation yet
-          break
+        Task { @MainActor [weak self] in
+          guard !completed else { return }
+          guard let self = self else {
+            completed = true
+            continuation.resume(throwing: AudioPlayerError.error("Player was disposed"))
+            return
+          }
+          self.eventHandler.onLog(message: "player status: \(status)")
+          switch status {
+          case .readyToPlay:
+            completed = true
+            continuation.resume()
+          case .failed:
+            completed = true
+            self.reset()
+            continuation.resume(throwing: AudioPlayerError.error("Failed to set playerItem"))
+          default:
+            break
+          }
         }
       }
       // Replacing the player item triggers continuation of the observation.
@@ -229,7 +237,7 @@ enum ReleaseMode: String {
       object: playerItem,
       queue: nil
     ) {
-      (notification) in
+      [weak self] (_) in
       Task { @MainActor [weak self] in
         guard let self = self else {
           return
