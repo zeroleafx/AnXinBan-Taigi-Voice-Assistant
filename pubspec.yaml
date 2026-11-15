@@ -122,3 +122,7 @@ dependency_overrides:
     path: third_party/audioplayers_darwin
   geolocator_apple:
     path: third_party/geolocator_apple
+  geolocator_android:
+    path: third_party/geolocator_android
+  audioplayers_android:
+    path: third_party/audioplayers_android
