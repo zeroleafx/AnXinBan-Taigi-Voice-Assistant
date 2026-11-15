@@ -194,6 +194,7 @@ void main() {
     expect(phone.dialed, ['0911-111-111']);
 
     await press(tester, find.text('把位置傳給 女兒'));
+    await press(tester, find.text('確認'));
     expect(phone.texts.single.$2, startsWith('我需要幫忙。我在這裡：'));
     expect(find.text('把位置傳給 女兒'), findsOneWidget);
   });
@@ -249,6 +250,7 @@ void main() {
     await say(tester, '把位置傳給阿明');
     expect(find.text('要傳給哪一位？'), findsOneWidget);
     await press(tester, find.text('陳志明'));
+    await press(tester, find.text('確認'));
     expect(phone.texts.single.$1, '0933-222-111');
     expect(phone.dialed, isEmpty);
     expect(find.text('把位置傳給 陳志明'), findsOneWidget);
@@ -309,6 +311,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('可以這樣講'), findsOneWidget);
     await say(tester, '幫我開LINE');
+    await press(tester, find.text('確認'));
     expect(find.text('已打開 LINE'), findsOneWidget);
   });
 
@@ -355,6 +358,7 @@ void main() {
   testWidgets('saying "開 LINE" opens LINE and says so', (tester) async {
     await open(tester, const Size(393, 852));
     await say(tester, '幫我開LINE');
+    await press(tester, find.text('確認'));
     expect(phone.opened, [PhoneApp.line]);
     expect(find.text('已打開 LINE'), findsOneWidget);
     expect(find.text('「幫我開LINE」'), findsOneWidget);
@@ -365,6 +369,8 @@ void main() {
     await say(tester, '打給阿明');
     await tester.tap(find.text('陳志明'));
     await tester.pump();
+    expect(phone.dialed, isEmpty);
+    await press(tester, find.text('確認'));
     expect(phone.dialed, ['0933-222-111']);
     expect(find.text('打給 陳志明'), findsOneWidget);
   });
@@ -372,6 +378,7 @@ void main() {
   testWidgets('a new recording clears the previous result', (tester) async {
     await open(tester, const Size(393, 852));
     await say(tester, '幫我開LINE');
+    await press(tester, find.text('確認'));
     await tester.tap(find.bySemanticsLabel('開始錄音'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
