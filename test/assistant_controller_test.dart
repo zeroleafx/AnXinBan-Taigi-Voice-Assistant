@@ -228,7 +228,7 @@ void main() {
       expect(phone.dialed, ['0911-111-111']);
       expect(shown().title, '正在打給 女兒');
       expect(shown().tone, OutcomeTone.problem);
-      expect(buttons(), ['打給 女兒', '打 119', '把位置傳給 女兒']);
+      expect(buttons(), ['打給 女兒', '打 119', '把位置傳給 女兒', '管理緊急聯絡人']);
     });
 
     test('the SOS button shows the same card without calling', () async {
@@ -275,6 +275,29 @@ void main() {
   });
 
   group('emergency contact', () {
+    test('manual management replaces and removes the saved contact', () async {
+      store.contact = daughter;
+      await assistant.initialize();
+      await assistant.showEmergency();
+      await tap('管理緊急聯絡人');
+      phone.picked = phone.contacts.first;
+      await tap('換一位');
+      expect(store.contact, phone.picked);
+      await assistant.showEmergency();
+      await tap('管理緊急聯絡人');
+      await tap('取消緊急聯絡人');
+      await tap('保留聯絡人');
+      expect(store.contact, phone.picked);
+      await tap('取消緊急聯絡人');
+      await tap('確認取消');
+      expect(store.contact, isNull);
+      expect(assistant.emergencyContact, isNull);
+      expect(buttons(), ['從通訊錄選']);
+      await assistant.showEmergency();
+      expect(buttons(), ['打 119', '用 LINE 傳我的位置', '設定緊急聯絡人']);
+      expect(phone.dialed, isEmpty);
+    });
+
     test('is set by name and remembered', () async {
       phone.contacts = [...phone.contacts, daughter];
       await assistant.handle('把女兒設成緊急聯絡人');

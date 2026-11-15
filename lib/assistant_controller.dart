@@ -345,13 +345,12 @@ class AssistantController extends ChangeNotifier {
           kind: ButtonKind.quiet,
           onPressed: () => _sendLocation(to: contact, urgent: true),
         ),
-        if (contact == null)
-          OutcomeButton(
-            icon: Icons.person_add_alt_1_rounded,
-            label: '設定緊急聯絡人',
-            kind: ButtonKind.quiet,
-            onPressed: () async => _contactCard(),
-          ),
+        OutcomeButton(
+          icon: Icons.contact_emergency_rounded,
+          label: contact == null ? '設定緊急聯絡人' : '管理緊急聯絡人',
+          kind: ButtonKind.quiet,
+          onPressed: () async => _contactCard(),
+        ),
       ],
     );
   }
@@ -472,6 +471,35 @@ class AssistantController extends ChangeNotifier {
             return picked == null ? null : _saveContact(picked);
           },
         ),
+        if (contact != null)
+          OutcomeButton(
+            icon: Icons.person_remove_rounded,
+            label: '取消緊急聯絡人',
+            kind: ButtonKind.quiet,
+            onPressed: () async => AssistantOutcome(
+              tone: OutcomeTone.info,
+              icon: Icons.person_remove_rounded,
+              title: '要取消緊急聯絡人嗎？',
+              detail: '取消後，求助時不會自動撥打給 ${contact.name}',
+              buttons: [
+                OutcomeButton(
+                  icon: Icons.check_rounded,
+                  label: '確認取消',
+                  onPressed: () async {
+                    await store.save(null);
+                    emergencyContact = null;
+                    return _contactCard();
+                  },
+                ),
+                OutcomeButton(
+                  icon: Icons.arrow_back_rounded,
+                  label: '保留聯絡人',
+                  kind: ButtonKind.quiet,
+                  onPressed: () async => _contactCard(),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }
