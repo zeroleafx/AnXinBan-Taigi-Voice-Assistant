@@ -1,6 +1,7 @@
 import AVFoundation
 import Flutter
 import UIKit
+import Network
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -26,6 +27,25 @@ import UIKit
     registerTorch(registrar.messenger())
     let channel = FlutterMethodChannel(name: "anxinban/breeze", binaryMessenger: registrar.messenger())
     channel.setMethodCallHandler { call, reply in
+      if call.method == "downloadEnvironment" {
+        do {
+          let url = try self.recognizer.modelURL().deletingLastPathComponent()
+          let values = try url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+          let available = values.volumeAvailableCapacityForImportantUsage ?? 0
+          let monitor = NWPathMonitor()
+          monitor.pathUpdateHandler = { path in
+            monitor.pathUpdateHandler = nil
+            monitor.cancel()
+            let network = path.status != .satisfied ? "none" :
+              (path.isExpensive || path.isConstrained ? "metered" : "unmetered")
+            reply(["network": network, "availableBytes": available])
+          }
+          monitor.start(queue: .main)
+        } catch {
+          reply(FlutterError(code: "storage", message: "無法檢查手機儲存空間。", details: nil))
+        }
+        return
+      }
       if call.method == "modelPath" {
         do { reply(try self.recognizer.modelURL().path) }
         catch { reply(FlutterError(code: "storage", message: error.localizedDescription, details: nil)) }
