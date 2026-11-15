@@ -26,6 +26,7 @@ class BreezeChannel implements SpeechModelBackend {
         ready: await modelExists(path),
         totalBytes: modelBytes,
         downloadedBytes: await partialModelBytes(path),
+        network: _network((await _environment())['network']),
       );
     }
     if (defaultTargetPlatform != TargetPlatform.android) return null;
@@ -55,6 +56,22 @@ class BreezeChannel implements SpeechModelBackend {
   Future<void> download(void Function(int percent) onPercent) async {
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       final path = (await _channel.invokeMethod<String>('modelPath'))!;
+      final environment = await _environment();
+      final partial = await partialModelBytes(path);
+      final remaining = partial > modelBytes
+          ? modelBytes
+          : modelBytes - partial;
+      final available = (environment['availableBytes'] as num?)?.toInt();
+      if (available != null && available < remaining) {
+        throw PlatformException(
+          code: 'storage',
+          message: '手機空間不夠，還需要 ${(remaining / 1e9).toStringAsFixed(1)} GB。',
+        );
+      }
+      if (remaining > 0 &&
+          _network(environment['network']) == ModelNetwork.none) {
+        throw PlatformException(code: 'network', message: '連不上網路，請確認網路後再試一次。');
+      }
       return downloadModel(path, onPercent);
     }
     void forward() {
@@ -69,6 +86,16 @@ class BreezeChannel implements SpeechModelBackend {
       downloadPercent.removeListener(forward);
     }
   }
+
+  Future<Map<String, Object?>> _environment() async =>
+      await _channel.invokeMapMethod<String, Object?>('downloadEnvironment') ??
+      {};
+
+  ModelNetwork _network(Object? value) => switch (value) {
+    'none' => ModelNetwork.none,
+    'metered' => ModelNetwork.metered,
+    _ => ModelNetwork.unmetered,
+  };
 
   Future<void> _onNativeCall(MethodCall call) async {
     if (call.method == 'downloadProgress') {

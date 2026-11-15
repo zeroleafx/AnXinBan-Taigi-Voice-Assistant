@@ -62,11 +62,34 @@ void main() {
 
   test('iOS checks its local model file', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-    native((call) async => '/missing-test-directory/model.bin');
+    native(
+      (call) async => call.method == 'modelPath'
+          ? '/missing-test-directory/model.bin'
+          : {'network': 'metered', 'availableBytes': 2000000000},
+    );
     expect((await breeze.status())!.ready, false);
-    expect(calls, ['modelPath']);
+    expect(calls, ['modelPath', 'downloadEnvironment']);
+    expect((await breeze.status())!.network, ModelNetwork.metered);
     debugDefaultTargetPlatformOverride = null;
   });
+
+  for (final reason in ['network', 'storage']) {
+    test('iOS reports $reason before downloading', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      native(
+        (call) async => call.method == 'modelPath'
+            ? '/missing-test-directory/model.bin'
+            : {
+                'network': reason == 'network' ? 'none' : 'unmetered',
+                'availableBytes': reason == 'storage' ? 0 : 2000000000,
+              },
+      );
+      await expectLater(
+        breeze.download((_) {}),
+        throwsA(isA<PlatformException>().having((e) => e.code, 'code', reason)),
+      );
+    });
+  }
 
   test('an Android build without modelStatus is treated as ready', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;

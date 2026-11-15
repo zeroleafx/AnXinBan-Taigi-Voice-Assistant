@@ -1,4 +1,7 @@
 import 'dart:io';
+import 'dart:async';
+
+import 'package:flutter/services.dart';
 
 import 'package:crypto/crypto.dart';
 
@@ -80,6 +83,16 @@ Future<void> downloadModel(
     }
     await part.rename(path);
     progress(100);
+  } on FormatException {
+    throw PlatformException(code: 'verification', message: '語音模型檔案損毀，請重新下載。');
+  } on FileSystemException {
+    throw PlatformException(code: 'storage', message: '無法儲存語音模型，請確認手機剩餘空間。');
+  } on SocketException {
+    throw PlatformException(code: 'network', message: '連不上網路，請確認網路後再試一次。');
+  } on TimeoutException {
+    throw PlatformException(code: 'network', message: '下載中斷，再試一次會接著下載。');
+  } on HttpException {
+    throw PlatformException(code: 'network', message: '下載中斷，再試一次會接著下載。');
   } finally {
     client.close(force: true);
   }
