@@ -16,8 +16,13 @@ Do not remove these compatibility settings or hide warnings without validating r
 | --- | --- | --- |
 | Flutter Gradle plugin | `android.newDsl=false` | Upgrade to a Flutter toolchain using the public AGP DSL. The installed FlutterPlugin.kt still casts to AbstractAppExtension. |
 | Flutter Gradle tasks | Task.project accessed during task execution | Requires an upstream Flutter Gradle plugin migration for Gradle 10. |
+<<<<<<< HEAD
 | audioplayers_android 5.3.0 | Groovy space-assignment syntax | Fixed in third_party/audioplayers_android. |
 | geolocator_android 5.2.1 | Groovy space-assignment syntax, Java 8 source/target, deprecated LocationMapper API | Fixed in third_party/geolocator_android using Java 17 and BundleCompat. |
+=======
+| audioplayers_android 5.3.0 | Groovy space-assignment syntax | Upstream update or maintained local fork. No newer resolvable release found in pub outdated. |
+| geolocator_android 5.2.1 | Groovy space-assignment syntax, Java 8 source/target, deprecated LocationMapper API | Upstream update or maintained local fork with Android API compatibility tests. No newer resolvable release found in pub outdated. |
+>>>>>>> 54d35b2 (Fixed iOS build warnings)
 
 The Java 8 warnings were emitted by local JDK 25; CI uses JDK 17. They are not an instruction to raise the app's minimum Android version.
 
