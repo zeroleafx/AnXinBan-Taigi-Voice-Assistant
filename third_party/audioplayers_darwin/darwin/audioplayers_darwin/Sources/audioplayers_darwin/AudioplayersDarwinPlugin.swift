@@ -383,13 +383,13 @@ public class AudioplayersDarwinPlugin: NSObject, FlutterPlugin {
   }
 
   @MainActor
-  func controlAudioSession() {
+  func controlAudioSession() async {
     let anyIsPlaying = players.values.contains { player in
       player.isPlaying
     }
 
     do {
-      try globalContext.activateAudioSession(active: anyIsPlaying)
+      try await globalContext.activateAudioSession(active: anyIsPlaying)
     } catch let error {
       self.globalEvents.onError(
         code: "DarwinAudioError", message: "Error configuring audio session: \(error)", details: nil

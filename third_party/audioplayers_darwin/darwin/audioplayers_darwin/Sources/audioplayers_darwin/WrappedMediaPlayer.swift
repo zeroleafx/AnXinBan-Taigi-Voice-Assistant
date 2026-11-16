@@ -281,7 +281,7 @@ enum ReleaseMode: String {
       return
     }
 
-    reference.controlAudioSession()
+    await reference.controlAudioSession()
     eventHandler.onComplete()
 
     await seek(time: toCMTime(millis: 0))
