@@ -18,11 +18,21 @@ import MediaPlayer
       self.options = options
     }
 
-    public func activateAudioSession(
-      active: Bool
-    ) throws {
-      let session = AVAudioSession.sharedInstance()
-      try session.setActive(active)
+    // Serialize activation changes without blocking the UI. This also supports
+    // iOS versions that predate AVAudioSession's asynchronous activation API.
+    private static let sessionQueue = DispatchQueue(label: "anxinban.audio-session")
+
+    public func activateAudioSession(active: Bool) async throws {
+      try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        Self.sessionQueue.async {
+          do {
+            try AVAudioSession.sharedInstance().setActive(active)
+            continuation.resume()
+          } catch {
+            continuation.resume(throwing: error)
+          }
+        }
+      }
     }
 
     public func apply() throws {
@@ -123,7 +133,7 @@ import MediaPlayer
 #else
   // no-op impl of AudioContext for macos
   struct AudioContext {
-    func activateAudioSession(active: Bool) throws {
+    func activateAudioSession(active: Bool) async throws {
     }
 
     func apply() throws {

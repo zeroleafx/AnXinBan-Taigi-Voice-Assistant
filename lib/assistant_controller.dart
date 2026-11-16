@@ -142,7 +142,10 @@ class AssistantController extends ChangeNotifier {
     if (onChoice != null) await _work(() => onChoice(contact));
   }
 
-  Future<void> press(OutcomeButton button) => _work(button.onPressed);
+  Future<void> press(OutcomeButton button) async {
+    if (!(outcome?.buttons.contains(button) ?? false)) return;
+    await _work(button.onPressed);
+  }
 
   void clear() {
     if (outcome == null) return;
@@ -170,7 +173,69 @@ class AssistantController extends ChangeNotifier {
     }
   }
 
-  Future<AssistantOutcome?> _run(VoiceCommand command) async {
+  AssistantOutcome _confirm(String title, String? detail, OutcomeStep execute) {
+    final previous = outcome;
+    var used = false;
+    return AssistantOutcome(
+      tone: OutcomeTone.info,
+      icon: Icons.help_outline_rounded,
+      title: title,
+      detail: detail,
+      heard: _heard,
+      buttons: [
+        OutcomeButton(
+          icon: Icons.check_rounded,
+          label: '確認',
+          onPressed: () async {
+            if (used) return null;
+            used = true;
+            return await execute() ??
+                previous ??
+                _done(Icons.check_rounded, '已開啟');
+          },
+        ),
+        OutcomeButton(
+          icon: Icons.close_rounded,
+          label: '取消',
+          kind: ButtonKind.quiet,
+          onPressed: () async {
+            used = true;
+            return _info(Icons.close_rounded, '已取消');
+          },
+        ),
+      ],
+    );
+  }
+
+  Future<AssistantOutcome?> _run(
+    VoiceCommand command, {
+    bool confirmed = false,
+  }) async {
+    if (!confirmed) {
+      final prompt = switch (command) {
+        OpenAppCommand(:final app) => ('要開啟 ${app.label} 嗎？', app.label),
+        OpenNamedAppCommand(:final name) => ('要開啟 $name 嗎？', name),
+        DialNumberCommand(:final number)
+            when !['119', '110', '112'].contains(number) =>
+          ('要撥打電話嗎？', number),
+        NavigateCommand(:final place) => ('要開啟導航嗎？', place),
+        SendMessageCommand(viaLine: true, :final body) => (
+          '要開啟 LINE 嗎？',
+          '內容：$body\n開啟後選擇收件人並送出',
+        ),
+        VideoSearchCommand(:final query) => ('要開啟 YouTube 嗎？', query),
+        WeatherCommand() => ('要開啟網頁查天氣嗎？', '搜尋：今天天氣'),
+        _ => null,
+      };
+      if (prompt != null) {
+        return _confirm(
+          prompt.$1,
+          prompt.$2,
+          () => _run(command, confirmed: true),
+        );
+      }
+    }
+
     switch (command) {
       case OpenAppCommand(:final app):
         return await actions.openApp(app)
@@ -303,19 +368,30 @@ class AssistantController extends ChangeNotifier {
     );
   }
 
-  Future<AssistantOutcome?> _call(ContactEntry contact) async =>
-      await actions.dial(contact.number)
-      ? _done(Icons.call_rounded, '打給 ${contact.name}', detail: contact.number)
-      : _cannotDial();
+  Future<AssistantOutcome?> _call(ContactEntry contact) async => _confirm(
+    '要打給 ${contact.name} 嗎？',
+    contact.number,
+    () async => await actions.dial(contact.number)
+        ? _done(
+            Icons.call_rounded,
+            '打給 ${contact.name}',
+            detail: contact.number,
+          )
+        : _cannotDial(),
+  );
 
   Future<AssistantOutcome?> _text(ContactEntry contact, String body) async =>
-      await actions.composeSms(number: contact.number, body: body)
-      ? _done(
-          Icons.sms_rounded,
-          '傳簡訊給 ${contact.name}',
-          detail: body.isEmpty ? contact.number : '「$body」',
-        )
-      : _cannotText();
+      _confirm(
+        '要傳簡訊給 ${contact.name} 嗎？',
+        '${contact.number}\n$body\n開啟後仍需按送出',
+        () async => await actions.composeSms(number: contact.number, body: body)
+            ? _done(
+                Icons.sms_rounded,
+                '傳簡訊給 ${contact.name}',
+                detail: body.isEmpty ? contact.number : '「$body」',
+              )
+            : _cannotText(),
+      );
 
   /// The help card: call the emergency contact or 119, or send the location.
   AssistantOutcome _help({bool dialed = false}) {
@@ -374,9 +450,13 @@ class AssistantController extends ChangeNotifier {
         OutcomeButton(
           icon: Icons.map_rounded,
           label: '打開地圖',
-          onPressed: () async => await actions.openMap(place)
-              ? null
-              : _problem(Icons.wrong_location_rounded, '打不開地圖'),
+          onPressed: () async => _confirm(
+            '要開啟地圖嗎？',
+            place.label,
+            () async => await actions.openMap(place)
+                ? null
+                : _problem(Icons.wrong_location_rounded, '打不開地圖'),
+          ),
         ),
         if (contact != null)
           OutcomeButton(
@@ -405,7 +485,15 @@ class AssistantController extends ChangeNotifier {
     Place place, {
     ContactEntry? to,
     bool urgent = false,
+    bool confirmed = false,
   }) async {
+    if (!confirmed) {
+      return _confirm(
+        to == null ? '要分享目前位置嗎？' : '要把位置傳給 ${to.name} 嗎？',
+        '${to == null ? "LINE（無法開啟時改用簡訊）" : to.number}\n${place.message(urgent: urgent)}\n開啟後仍需按送出',
+        () => _sendPlace(place, to: to, urgent: urgent, confirmed: true),
+      );
+    }
     final text = place.message(urgent: urgent);
     if (to != null) {
       return await actions.composeSms(number: to.number, body: text)
