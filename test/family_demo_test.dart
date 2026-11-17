@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:an_xin_ban/family_demo_store.dart';
@@ -11,6 +12,48 @@ import 'support/fake_phone.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  testWidgets('invitation dialog copies its code and closes', (tester) async {
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => const InvitationCodeDialog(code: 'test-code'),
+              ),
+              child: const Text('開啟'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('開啟'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('複製'));
+    await tester.pumpAndSettle();
+    expect(copied, 'test-code');
+    expect(find.text('已複製'), findsOneWidget);
+    await tester.tap(find.text('關閉'));
+    await tester.pumpAndSettle();
+    expect(find.byType(InvitationCodeDialog), findsNothing);
+  });
   test('draft settings only reach the elder after simulated sync', () async {
     final store = FamilyDemoStore();
     await store.write('pending', [

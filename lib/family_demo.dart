@@ -13,6 +13,91 @@ import 'family_demo_store.dart';
 import 'home_page.dart';
 import 'voice_command.dart';
 
+void showFamilyFeedback(BuildContext context, String text) {
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: Text(
+          text,
+          style: Theme.of(context).textTheme.bodyMedium
+              ?.copyWith(color: AppColors.ink, fontWeight: FontWeight.w600),
+        ),
+        backgroundColor: AppColors.card,
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+          side: const BorderSide(color: AppColors.freshGreen),
+        ),
+        margin: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: text.length > 30 ? 6 : 3),
+      ),
+    );
+}
+
+class InvitationCodeDialog extends StatefulWidget {
+  const InvitationCodeDialog({super.key, required this.code});
+  final String code;
+  @override
+  State<InvitationCodeDialog> createState() => _InvitationCodeDialogState();
+}
+
+class _InvitationCodeDialogState extends State<InvitationCodeDialog> {
+  bool copied = false;
+  String? error;
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    backgroundColor: AppColors.card,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+    title: const Text('家人配對碼'),
+    content: SizedBox(
+      width: 320,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('請在長輩手機輸入此碼。限使用一次，10 分鐘內有效。'),
+          const SizedBox(height: 16),
+          SelectableText(
+            widget.code,
+            style: const TextStyle(
+              color: AppColors.green,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (error != null) Text(error!),
+        ],
+      ),
+    ),
+    actions: [
+      FilledButton.icon(
+        icon: Icon(copied ? Icons.check : Icons.copy_rounded),
+        label: Text(copied ? '已複製' : '複製'),
+        style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+        onPressed: () async {
+          try {
+            await Clipboard.setData(ClipboardData(text: widget.code));
+            if (mounted) {
+              setState(() {
+                copied = true;
+                error = null;
+              });
+            }
+          } catch (_) {
+            if (mounted) setState(() => error = '無法複製，請長按配對碼複製');
+          }
+        },
+      ),
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('關閉'),
+      ),
+    ],
+  );
+}
+
 class FamilyDemoPage extends StatefulWidget {
   const FamilyDemoPage({super.key, this.isFamily});
   final bool? isFamily;
@@ -26,19 +111,10 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
   final cloud = FamilyCloud();
   StreamSubscription<dynamic>? auth;
   int revision = 0;
-  String? invitation;
   List<Map<String, dynamic>> devices = [];
   Future<void> refreshCloud() async {
     if (!FamilyCloud.available || cloud.user == null) return;
     final latestDevices = await cloud.links();
-    // An invitation is consumed by pairing; do not keep showing its old code.
-    if (latestDevices.any(
-      (link) =>
-          link['owner_id'] == cloud.user &&
-          !devices.any((old) => old['id'] == link['id']),
-    )) {
-      invitation = null;
-    }
     devices = latestDevices;
     if (unlocked) {
       final remote = await cloud.snapshot(cloud.user!);
@@ -120,7 +196,6 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
       return;
     }
     await cloud.client.from('family_device_links').delete().eq('id', id);
-    invitation = null;
     await refreshCloud();
     if (mounted) {
       setState(
@@ -133,17 +208,19 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
   bool loading = true;
   List<Map<String, String>> pending = [];
   List<Map<String, String>> applied = [];
-  String? message;
+  // Schedule feedback after the current state update, never inside build.
+  set message(String? value) {
+    if (value == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) showFamilyFeedback(context, value);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     load();
-    if (widget.isFamily == true) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) unawaited(run(enterFamily));
-      });
-    }
     if (FamilyCloud.available) {
       var previousUser = cloud.user;
       auth = cloud.client.auth.onAuthStateChange.listen(
@@ -160,45 +237,7 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
             if (state.event == AuthChangeEvent.signedOut) message = '已登出';
           });
           if (justSignedIn) {
-            ScaffoldMessenger.of(context)
-              ..hideCurrentSnackBar()
-              ..showSnackBar(
-                SnackBar(
-                  content: Row(
-                    children: [
-                      const Icon(
-                        Icons.check_circle_rounded,
-                        color: AppColors.green,
-                        size: 22,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          '登入成功',
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(
-                                color: AppColors.ink,
-                                fontWeight: FontWeight.w600,
-                              ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  backgroundColor: AppColors.card,
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    side: const BorderSide(color: AppColors.freshGreen),
-                  ),
-                  margin: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 12,
-                  ),
-                  behavior: SnackBarBehavior.floating,
-                  duration: const Duration(seconds: 3),
-                ),
-              );
+            message = '登入成功';
           }
           unawaited(_refreshAfterLogin());
         },
@@ -269,6 +308,10 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
   }
 
   Future<void> enterFamily() async {
+    if (FamilyCloud.available && cloud.user == null) {
+      message = '請先使用 Google 登入，再解鎖設定';
+      return;
+    }
     final exists = await store.hasPin();
     if (!mounted) return;
     final pin = await showDialog<String>(
@@ -414,7 +457,6 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                                   unlocked = false;
                                   revision = 0;
                                   devices = [];
-                                  invitation = null;
                                 });
                               }
                               await load();
@@ -436,13 +478,16 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                         onPressed: busy
                             ? null
                             : () => run(() async {
-                                invitation = await cloud.invite();
-                                if (mounted) setState(() {});
+                                final code = await cloud.invite();
+                                if (!mounted) return;
+                                await showDialog<void>(
+                                  context: this.context,
+                                  builder: (_) =>
+                                      InvitationCodeDialog(code: code),
+                                );
                               }),
                         child: const Text('產生一次性配對碼'),
                       ),
-                      if (invitation != null)
-                        SelectableText('配對碼（限用一次，10 分鐘有效）：$invitation'),
                       for (final device in devices.where(
                         (d) => d['owner_id'] == cloud.user,
                       ))
@@ -498,7 +543,6 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                                   return;
                                 }
                                 await cloud.deleteCloudSettings();
-                                invitation = null;
                                 await refreshCloud();
                                 if (mounted) {
                                   setState(
@@ -512,11 +556,6 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                   ],
                 ] else
                   const Text('雲端尚未連線，可先使用本機設定。'),
-                if (message != null)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Text(message!),
-                  ),
                 const SizedBox(height: 24),
                 if (!unlocked) ...[
                   if (widget.isFamily != true) ...[
@@ -548,8 +587,13 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                   if (widget.isFamily != false)
                     OutlinedButton.icon(
                       icon: const Icon(Icons.family_restroom),
-                      label: const Text('我是家人，管理設定'),
-                      onPressed: busy ? null : () => run(enterFamily),
+                      label: Text(
+                        widget.isFamily == true ? '解鎖設定' : '我是家人，管理設定',
+                      ),
+                      onPressed:
+                          busy || (FamilyCloud.available && cloud.user == null)
+                          ? null
+                          : () => run(enterFamily),
                     ),
                   const SizedBox(height: 24),
                   Text('長輩端已套用：${applied.length} 筆設定'),

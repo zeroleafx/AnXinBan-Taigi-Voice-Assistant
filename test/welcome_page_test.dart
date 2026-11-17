@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  testWidgets('role entry opens family PIN and returns to role chooser', (
+  testWidgets('family entry waits for explicit settings unlock before PIN', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -17,6 +17,9 @@ void main() {
     expect(find.text('長輩'), findsOneWidget);
     expect(find.text('使用 Google 登入'), findsNothing);
     await tester.tap(find.text('家人'));
+    await tester.pumpAndSettle();
+    expect(find.text('建立家人 PIN'), findsNothing);
+    await tester.tap(find.text('解鎖設定'));
     await tester.pumpAndSettle();
     expect(find.text('建立家人 PIN'), findsOneWidget);
     await tester.tap(find.text('取消'));

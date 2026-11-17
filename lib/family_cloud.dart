@@ -1,6 +1,7 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/services.dart';
 
 import 'family_demo_store.dart';
 
@@ -50,6 +51,19 @@ class FamilyCloud {
   SupabaseClient get client => Supabase.instance.client;
   String? get user => client.auth.currentUser?.id;
   Future<void> login() async {
+    if (client.auth.currentSession != null) return;
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      final oauth = await client.auth.getOAuthSignInUrl(
+        provider: OAuthProvider.google,
+        redirectTo: 'com.anxinban.app://login-callback/',
+      );
+      final callback = await const MethodChannel('anxinban/auth')
+          .invokeMethod<String>('signIn', {'url': oauth.url});
+      if (callback != null) {
+        await client.auth.getSessionFromUrl(Uri.parse(callback));
+      }
+      return;
+    }
     await client.auth.signInWithOAuth(
       OAuthProvider.google,
       redirectTo: 'com.anxinban.app://login-callback/',
