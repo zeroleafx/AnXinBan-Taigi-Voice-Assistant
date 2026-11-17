@@ -7,10 +7,12 @@ class ContactEntry {
     required this.name,
     required this.numbers,
     this.nickname,
+    this.aliases = const [],
   });
 
   final String name;
   final String? nickname;
+  final List<String> aliases;
   final List<String> numbers;
 
   String get number => numbers.first;
@@ -34,7 +36,7 @@ List<ContactEntry> matchContacts(
   for (final contact in contacts) {
     if (contact.numbers.isEmpty) continue;
     var best = 0;
-    for (final label in [contact.name, ?contact.nickname]) {
+    for (final label in [contact.name, ?contact.nickname, ...contact.aliases]) {
       final name = normalizeTranscript(label);
       if (name.isEmpty) continue;
       for (final MapEntry(key: word, value: penalty) in asked.entries) {

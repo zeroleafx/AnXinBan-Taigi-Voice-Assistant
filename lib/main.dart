@@ -5,14 +5,20 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'app_theme.dart';
-import 'home_page.dart';
+import 'family_demo.dart';
+import 'family_cloud.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // The home screen is designed to fit one portrait screen without scrolling.
   unawaited(
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]),
   );
+  try {
+    await FamilyCloud.initialize();
+  } catch (_) {
+    /* Offline local mode remains available. */
+  }
   runApp(const AnXinBanApp());
 }
 
@@ -23,7 +29,7 @@ const _taiwan = Locale.fromSubtags(
 );
 
 class AnXinBanApp extends StatelessWidget {
-  const AnXinBanApp({super.key, this.home = const HomePage()});
+  const AnXinBanApp({super.key, this.home = const FamilyDemoPage()});
 
   final Widget home;
 

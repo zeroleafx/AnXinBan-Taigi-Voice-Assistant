@@ -9,6 +9,9 @@ import 'assistant_controller.dart';
 import 'breeze_channel.dart';
 import 'contact_matcher.dart';
 import 'emergency_store.dart';
+import 'family_demo_store.dart';
+import 'family_cloud.dart';
+import 'voice_command.dart';
 import 'mic_button.dart';
 import 'web_transcription.dart';
 import 'phone_actions.dart';
@@ -33,6 +36,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   late final AssistantController _assistant;
   late final SpeechModelController _model;
   bool _deferred = false;
+  Timer? _familyTimer;
+  bool _syncingFamily = false;
 
   @override
   void initState() {
@@ -43,7 +48,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           DevicePhoneActions(),
           store: DeviceEmergencyStore(),
         );
-    if (widget.assistant == null) unawaited(_assistant.initialize());
+    if (widget.assistant == null) unawaited(_initializeFamilySettings());
     _recording = widget.recording ?? _deviceRecording();
     _model = widget.model ?? SpeechModelController(_breeze);
     _recording.onTranscript = _onTranscript;
@@ -52,6 +57,62 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _model.addListener(_modelChanged);
     unawaited(_model.refresh());
     WidgetsBinding.instance.addObserver(this);
+    if (widget.assistant == null && FamilyCloud.available) {
+      _familyTimer = Timer.periodic(
+        const Duration(seconds: 30),
+        (_) => unawaited(_syncFamily()),
+      );
+    }
+  }
+
+  Future<void> _syncFamily() async {
+    if (_syncingFamily ||
+        !mounted ||
+        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
+        _assistant.working) {
+      return;
+    }
+    _syncingFamily = true;
+    try {
+      await FamilyCloud().pull().timeout(const Duration(seconds: 10));
+      if (mounted) await _initializeFamilySettings();
+    } catch (_) {
+    } finally {
+      _syncingFamily = false;
+    }
+  }
+
+  Future<void> _initializeFamilySettings() async {
+    try {
+      final entries = await FamilyDemoStore().read('applied');
+      if (!mounted) return;
+      _assistant.familyContacts.clear();
+      _assistant.familyPlaces.clear();
+      for (final entry in entries) {
+        final aliases = entry['aliases']!
+            .split(RegExp('[,，]'))
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
+        if (entry['kind'] == 'contact') {
+          _assistant.familyContacts.add(
+            ContactEntry(
+              name: entry['label']!,
+              numbers: [entry['value']!],
+              aliases: aliases,
+            ),
+          );
+        } else {
+          for (final alias in [entry['label']!, ...aliases]) {
+            _assistant.familyPlaces[normalizeTranscript(alias)] =
+                entry['value']!;
+          }
+        }
+      }
+    } catch (_) {
+      /* Existing local features remain available without demo settings. */
+    }
+    if (mounted) await _assistant.initialize();
   }
 
   RecordingController _deviceRecording() {
@@ -93,6 +154,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       unawaited(_model.refresh());
       // The flashlight may have been switched from the control centre.
       unawaited(_assistant.syncTorch());
+      if (widget.assistant == null && FamilyCloud.available) {
+        unawaited(_syncFamily());
+      }
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
       unawaited(_recording.setForeground(false));
@@ -102,6 +166,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _familyTimer?.cancel();
     _recording.removeListener(_refresh);
     _assistant.removeListener(_refresh);
     _model.removeListener(_modelChanged);
