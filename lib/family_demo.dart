@@ -2,9 +2,11 @@ import 'dart:convert';
 import 'dart:async';
 
 import 'family_cloud.dart';
+import 'app_theme.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show AuthChangeEvent;
 
 import 'family_demo_store.dart';
 
@@ -38,31 +40,42 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
   }
 
   Future<void> pairDevice() async {
-    final input = TextEditingController();
     final code = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('連結家人'),
-        content: TextField(
-          controller: input,
-          decoration: const InputDecoration(labelText: '家人提供的配對碼'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, input.text),
-            child: const Text('確認連結並接收家人設定'),
-          ),
-        ],
-      ),
+      builder: (_) => const PairCodeDialog(),
     );
-    input.dispose();
     if (code == null) return;
-    await cloud.pair(code);
-    await refreshCloud();
+    try {
+      await cloud.pair(code);
+    } catch (error) {
+      if (mounted) {
+        final detail = error.toString();
+        setState(
+          () => message = detail.contains('23505')
+              ? '這個帳號已連結家人，請先解除原本的配對'
+              : '配對未成功：請確認配對碼正確、未過期，且兩端使用不同帳號',
+        );
+      }
+      return;
+    }
+    if (mounted) setState(() => message = '已連結家人，正在下載設定…');
+    try {
+      await refreshCloud();
+      final link = devices
+          .where((d) => d['elder_id'] == cloud.user)
+          .firstOrNull;
+      if (mounted) {
+        setState(
+          () => message = (link?['applied_revision'] as num? ?? 0) > 0
+              ? '已連結家人，設定已同步完成。可以開始使用長輩模式。'
+              : '已連結家人，等待家人發佈設定。',
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => message = '已連結家人，但設定尚未下載完成。請按「重新整理雲端狀態」重試，不必重新配對。');
+      }
+    }
   }
 
   bool unlocked = false;
@@ -77,9 +90,75 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
     WidgetsBinding.instance.addObserver(this);
     load();
     if (FamilyCloud.available) {
-      auth = cloud.client.auth.onAuthStateChange.listen((_) {
-        if (mounted) unawaited(run(refreshCloud));
-      });
+      var previousUser = cloud.user;
+      auth = cloud.client.auth.onAuthStateChange.listen(
+        (state) {
+          if (!mounted) return;
+          final user = cloud.user;
+          final justSignedIn =
+              state.event == AuthChangeEvent.signedIn &&
+              user != null &&
+              previousUser != user;
+          previousUser = user;
+          setState(() {
+            if (justSignedIn) message = null;
+            if (state.event == AuthChangeEvent.signedOut) message = '已登出';
+          });
+          if (justSignedIn) {
+            ScaffoldMessenger.of(context)
+              ..hideCurrentSnackBar()
+              ..showSnackBar(
+                SnackBar(
+                  content: Row(
+                    children: [
+                      const Icon(
+                        Icons.check_circle_rounded,
+                        color: AppColors.green,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          '登入成功',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: AppColors.ink,
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  backgroundColor: AppColors.card,
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    side: const BorderSide(color: AppColors.freshGreen),
+                  ),
+                  margin: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 12,
+                  ),
+                  behavior: SnackBarBehavior.floating,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+          }
+          unawaited(_refreshAfterLogin());
+        },
+        onError: (Object error) {
+          if (mounted) setState(() => message = '登入未完成，請重新嘗試');
+        },
+      );
+    }
+  }
+
+  Future<void> _refreshAfterLogin() async {
+    try {
+      await refreshCloud().timeout(const Duration(seconds: 10));
+    } catch (_) {
+      if (mounted) setState(() => message = '已登入，但雲端資料暫時無法讀取，請重新整理');
     }
   }
 
@@ -245,6 +324,15 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                       child: const Text('使用 Google 登入'),
                     ),
                   if (cloud.user != null) ...[
+                    if (devices.any((d) => d['elder_id'] == cloud.user))
+                      const Card(
+                        child: ListTile(
+                          leading: Icon(Icons.link, color: Colors.green),
+                          title: Text('已連結家人'),
+                          subtitle: Text('家人發佈的設定會同步到這支手機'),
+                        ),
+                      ),
+
                     TextButton(
                       onPressed: busy
                           ? null
@@ -585,6 +673,41 @@ class _EntryDialogState extends State<_EntryDialog> {
           });
         },
         child: const Text('儲存'),
+      ),
+    ],
+  );
+}
+
+/// Owns its controller until the dialog's exit animation has finished.
+class PairCodeDialog extends StatefulWidget {
+  const PairCodeDialog({super.key});
+  @override
+  State<PairCodeDialog> createState() => _PairCodeDialogState();
+}
+
+class _PairCodeDialogState extends State<PairCodeDialog> {
+  final input = TextEditingController();
+  @override
+  void dispose() {
+    input.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('連結家人'),
+    content: TextField(
+      controller: input,
+      decoration: const InputDecoration(labelText: '家人提供的配對碼'),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('取消'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.pop(context, input.text),
+        child: const Text('確認連結並接收家人設定'),
       ),
     ],
   );

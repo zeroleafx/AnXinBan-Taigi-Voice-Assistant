@@ -39,6 +39,7 @@ class FamilyCloud {
     await client.auth.signInWithOAuth(
       OAuthProvider.google,
       redirectTo: 'com.anxinban.app://login-callback/',
+      authScreenLaunchMode: LaunchMode.externalApplication,
     );
   }
 

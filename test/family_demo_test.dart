@@ -76,6 +76,35 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('新增聯絡人與綽號'), findsNothing);
   });
+  testWidgets(
+    'pairing dialog survives dismissal animation with focused input',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () => showDialog<String>(
+                  context: context,
+                  builder: (_) => const PairCodeDialog(),
+                ),
+                child: const Text('配對'),
+              ),
+            ),
+          ),
+        ),
+      );
+      for (final button in ['取消', '確認連結並接收家人設定']) {
+        await tester.tap(find.text('配對'));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField), 'test-code');
+        await tester.tap(find.text(button));
+        await tester.pump();
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
   for (final background in [false, true]) {
     testWidgets(
       'contact survives ${background ? "background reauthentication" : "inactive overlay"}',
