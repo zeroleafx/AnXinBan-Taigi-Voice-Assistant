@@ -1,7 +1,21 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'family_demo_store.dart';
+
+class FamilyPublishException implements Exception {
+  const FamilyPublishException(this.message);
+  final String message;
+}
+
+bool sameFamilySettings(List<dynamic> saved, List<Map<String, String>> draft) =>
+    saved.length == draft.length &&
+    Iterable<int>.generate(draft.length).every(
+      (i) =>
+          saved[i] is Map &&
+          mapEquals(Map<String, dynamic>.from(saved[i] as Map), draft[i]),
+    );
 
 class SecureAuthStorage extends LocalStorage {
   const SecureAuthStorage();
@@ -56,11 +70,26 @@ class FamilyCloud {
     await client.rpc('accept_family_invitation', params: {'code': code.trim()});
   }
 
-  Future<int> publish(List<Map<String, String>> entries, int revision) async =>
-      (await client.rpc(
-        'publish_family_settings',
-        params: {'items': entries, 'expected_revision': revision},
-      ) as num).toInt();
+  Future<int> publish(List<Map<String, String>> entries, int revision) async {
+    final owner = user;
+    if (owner == null) throw const FamilyPublishException('請先登入');
+    if (!(await links()).any((link) => link['owner_id'] == owner)) {
+      throw const FamilyPublishException('請先與長輩完成配對，再發佈設定');
+    }
+    final remote = await snapshot(owner);
+    if (remote != null &&
+        sameFamilySettings(remote['entries'] as List, entries)) {
+      return (remote['revision'] as num).toInt();
+    }
+    if (((remote?['revision'] as num?)?.toInt() ?? 0) != revision) {
+      throw const FamilyPublishException('雲端設定已更新，請重新進入家人設定後再編輯');
+    }
+    return (await client.rpc(
+      'publish_family_settings',
+      params: {'items': entries, 'expected_revision': revision},
+    ) as num).toInt();
+  }
+
   Future<void> pull() async {
     if (user == null) return;
     final matches = (await links())

@@ -404,14 +404,23 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                         onPressed: busy
                             ? null
                             : () => run(() async {
-                                revision = await cloud.publish(
-                                  pending,
-                                  revision,
-                                );
+                                final before = revision;
+                                try {
+                                  revision = await cloud.publish(
+                                    pending,
+                                    revision,
+                                  );
+                                } on FamilyPublishException catch (error) {
+                                  if (mounted) {
+                                    setState(() => message = error.message);
+                                  }
+                                  return;
+                                }
                                 if (mounted) {
                                   setState(
-                                    () => message =
-                                        '已送出版本 $revision，請長輩端同步後查看套用狀態',
+                                    () => message = revision == before
+                                        ? '設定沒有變更，不需重新發佈（版本 $revision）'
+                                        : '已送出版本 $revision，請長輩端同步後查看套用狀態',
                                   );
                                 }
                               }),
