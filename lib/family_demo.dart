@@ -30,7 +30,16 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
   List<Map<String, dynamic>> devices = [];
   Future<void> refreshCloud() async {
     if (!FamilyCloud.available || cloud.user == null) return;
-    devices = await cloud.links();
+    final latestDevices = await cloud.links();
+    // An invitation is consumed by pairing; do not keep showing its old code.
+    if (latestDevices.any(
+      (link) =>
+          link['owner_id'] == cloud.user &&
+          !devices.any((old) => old['id'] == link['id']),
+    )) {
+      invitation = null;
+    }
+    devices = latestDevices;
     if (unlocked) {
       final remote = await cloud.snapshot(cloud.user!);
       revision = (remote?['revision'] as num?)?.toInt() ?? 0;
@@ -54,7 +63,9 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
         setState(
           () => message = detail.contains('23505')
               ? '這個帳號已連結家人，請先解除原本的配對'
-              : '配對未成功：請確認配對碼正確、未過期，且兩端使用不同帳號',
+              : detail.contains('Invalid or expired invitation')
+              ? '配對碼已使用、已過期或不能用於此帳號。請家人產生新的配對碼，並確認兩端使用不同帳號。'
+              : '配對未成功，請確認網路與配對碼後重試',
         );
       }
       return;
@@ -80,6 +91,44 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
   }
 
   bool unlocked = false;
+
+  Future<bool> confirmRemoval(String title, String description) async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(title),
+          content: Text(description),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('確認'),
+            ),
+          ],
+        ),
+      ) ??
+      false;
+
+  Future<void> unlinkDevice(String id) async {
+    if (!await confirmRemoval(
+      '解除配對？',
+      '解除後將停止同步。長輩手機下次連線確認解除時，會清除已同步的聯絡人與地址；離線時無法立即清除。',
+    )) {
+      return;
+    }
+    await cloud.client.from('family_device_links').delete().eq('id', id);
+    invitation = null;
+    await refreshCloud();
+    if (mounted) {
+      setState(
+        () => message = '已解除配對。重新連結請由家人產生新的配對碼；舊碼無法重複使用。遠端副本將在長輩手機下次連線時清除。',
+      );
+    }
+  }
+
   bool busy = false;
   bool loading = true;
   List<Map<String, String>> pending = [];
@@ -331,11 +380,25 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                     ),
                   if (cloud.user != null) ...[
                     if (devices.any((d) => d['elder_id'] == cloud.user))
-                      const Card(
+                      Card(
                         child: ListTile(
-                          leading: Icon(Icons.link, color: Colors.green),
-                          title: Text('已連結家人'),
-                          subtitle: Text('家人發佈的設定會同步到這支手機'),
+                          leading: const Icon(Icons.link, color: Colors.green),
+                          title: const Text('已連結家人'),
+                          subtitle: const Text('家人發佈的設定會同步到這支手機'),
+                          trailing: IconButton(
+                            tooltip: '解除配對',
+                            icon: const Icon(Icons.link_off),
+                            onPressed: busy
+                                ? null
+                                : () => run(
+                                    () => unlinkDevice(
+                                      devices.firstWhere(
+                                            (d) => d['elder_id'] == cloud.user,
+                                          )['id']
+                                          as String,
+                                    ),
+                                  ),
+                          ),
                         ),
                       ),
 
@@ -379,7 +442,7 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                         child: const Text('產生一次性配對碼'),
                       ),
                       if (invitation != null)
-                        SelectableText('配對碼（10 分鐘有效）：$invitation'),
+                        SelectableText('配對碼（限用一次，10 分鐘有效）：$invitation'),
                       for (final device in devices.where(
                         (d) => d['owner_id'] == cloud.user,
                       ))
@@ -391,13 +454,9 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                             icon: const Icon(Icons.link_off),
                             onPressed: busy
                                 ? null
-                                : () => run(() async {
-                                    await cloud.client
-                                        .from('family_device_links')
-                                        .delete()
-                                        .eq('id', device['id']);
-                                    await refreshCloud();
-                                  }),
+                                : () => run(
+                                    () => unlinkDevice(device['id'] as String),
+                                  ),
                           ),
                         ),
                       FilledButton(
@@ -425,6 +484,29 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                                 }
                               }),
                         child: const Text('發佈設定給長輩'),
+                      ),
+                      TextButton.icon(
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text('刪除雲端設定'),
+                        onPressed: busy
+                            ? null
+                            : () => run(() async {
+                                if (!await confirmRemoval(
+                                  '刪除所有雲端設定？',
+                                  '將刪除你發佈的聯絡人、綽號與地址，以及此機草稿。配對會保留，長輩手機下次連線會清除同步副本。此操作無法復原。',
+                                )) {
+                                  return;
+                                }
+                                await cloud.deleteCloudSettings();
+                                invitation = null;
+                                await refreshCloud();
+                                if (mounted) {
+                                  setState(
+                                    () =>
+                                        message = '雲端設定與此機草稿已刪除；長輩端下次連線會清除同步副本',
+                                  );
+                                }
+                              }),
                       ),
                     ],
                   ],

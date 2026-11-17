@@ -95,9 +95,15 @@ class FamilyCloud {
     final matches = (await links())
         .where((e) => e['elder_id'] == user)
         .toList();
-    if (matches.isEmpty) return;
+    if (matches.isEmpty) {
+      await FamilyDemoStore().write('applied', []);
+      return;
+    }
     final data = await snapshot(matches.single['owner_id'] as String);
-    if (data == null) return;
+    if (data == null) {
+      await FamilyDemoStore().write('applied', []);
+      return;
+    }
     final entries = (data['entries'] as List)
         .map((e) => Map<String, String>.from(e as Map))
         .toList();
@@ -106,5 +112,10 @@ class FamilyCloud {
       'ack_family_settings',
       params: {'version': data['revision']},
     );
+  }
+
+  Future<void> deleteCloudSettings() async {
+    await client.rpc('delete_family_settings');
+    await FamilyDemoStore().write('pending', []);
   }
 }
