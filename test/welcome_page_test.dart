@@ -1,0 +1,32 @@
+import 'package:an_xin_ban/app_theme.dart';
+import 'package:an_xin_ban/welcome_page.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets('role entry opens family PIN and returns to role chooser', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(theme: buildTheme(), home: const WelcomePage()),
+    );
+    expect(find.text('家人'), findsOneWidget);
+    expect(find.text('長輩'), findsOneWidget);
+    expect(find.text('使用 Google 登入'), findsNothing);
+    await tester.tap(find.text('家人'));
+    await tester.pumpAndSettle();
+    expect(find.text('建立家人 PIN'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('長輩'));
+    await tester.pumpAndSettle();
+    expect(find.text('我是長輩，開始使用'), findsOneWidget);
+    expect(find.text('我是家人，管理設定'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+}

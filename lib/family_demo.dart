@@ -14,7 +14,8 @@ import 'home_page.dart';
 import 'voice_command.dart';
 
 class FamilyDemoPage extends StatefulWidget {
-  const FamilyDemoPage({super.key});
+  const FamilyDemoPage({super.key, this.isFamily});
+  final bool? isFamily;
   @override
   State<FamilyDemoPage> createState() => _FamilyDemoPageState();
 }
@@ -89,6 +90,11 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     load();
+    if (widget.isFamily == true) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(run(enterFamily));
+      });
+    }
     if (FamilyCloud.available) {
       var previousUser = cloud.user;
       auth = cloud.client.auth.onAuthStateChange.listen(
@@ -293,7 +299,7 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
     final changed = jsonEncode(pending) != jsonEncode(applied);
     return Scaffold(
       appBar: AppBar(
-        title: Text(unlocked ? '家人設定' : '安心BAN'),
+        title: Text(unlocked || widget.isFamily == true ? '家人設定' : '安心BAN'),
         actions: [
           if (unlocked)
             IconButton(
@@ -357,7 +363,7 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                       onPressed: busy ? null : () => run(refreshCloud),
                       child: const Text('重新整理雲端狀態'),
                     ),
-                    if (!unlocked)
+                    if (!unlocked && widget.isFamily != true)
                       OutlinedButton(
                         onPressed: busy ? null : () => run(pairDevice),
                         child: const Text('我是長輩，輸入家人配對碼'),
@@ -422,35 +428,38 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                   ),
                 const SizedBox(height: 24),
                 if (!unlocked) ...[
-                  FilledButton.icon(
-                    icon: const Icon(Icons.mic),
-                    label: const Text('我是長輩，開始使用'),
-                    onPressed: busy
-                        ? null
-                        : () => run(() async {
-                            if (FamilyCloud.available && cloud.user != null) {
-                              try {
-                                await cloud.pull().timeout(
-                                  const Duration(seconds: 8),
-                                );
-                              } catch (_) {
-                                /* Use last local snapshot offline. */
+                  if (widget.isFamily != true) ...[
+                    FilledButton.icon(
+                      icon: const Icon(Icons.mic),
+                      label: const Text('我是長輩，開始使用'),
+                      onPressed: busy
+                          ? null
+                          : () => run(() async {
+                              if (FamilyCloud.available && cloud.user != null) {
+                                try {
+                                  await cloud.pull().timeout(
+                                    const Duration(seconds: 8),
+                                  );
+                                } catch (_) {
+                                  /* Use last local snapshot offline. */
+                                }
                               }
-                            }
-                            if (!context.mounted) return;
-                            await Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => const HomePage(),
-                              ),
-                            );
-                          }),
-                  ),
-                  const SizedBox(height: 16),
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.family_restroom),
-                    label: const Text('我是家人，管理設定'),
-                    onPressed: busy ? null : () => run(enterFamily),
-                  ),
+                              if (!context.mounted) return;
+                              await Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const HomePage(),
+                                ),
+                              );
+                            }),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  if (widget.isFamily != false)
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.family_restroom),
+                      label: const Text('我是家人，管理設定'),
+                      onPressed: busy ? null : () => run(enterFamily),
+                    ),
                   const SizedBox(height: 24),
                   Text('長輩端已套用：${applied.length} 筆設定'),
                   for (final entry in applied)
