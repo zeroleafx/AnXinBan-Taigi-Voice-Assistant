@@ -852,6 +852,11 @@ class PairCodeDialog extends StatefulWidget {
 
 class _PairCodeDialogState extends State<PairCodeDialog> {
   final input = TextEditingController();
+  void confirm() {
+    final code = input.text.trim();
+    if (code.isNotEmpty) Navigator.pop(context, code);
+  }
+
   @override
   void dispose() {
     input.dispose();
@@ -860,20 +865,115 @@ class _PairCodeDialogState extends State<PairCodeDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('連結家人'),
-    content: TextField(
-      controller: input,
-      decoration: const InputDecoration(labelText: '家人提供的配對碼'),
+    backgroundColor: AppColors.card,
+    surfaceTintColor: Colors.transparent,
+    insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(28),
+      side: BorderSide(color: AppColors.freshGreen.withValues(alpha: 0.4)),
     ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('取消'),
+    contentPadding: const EdgeInsets.all(24),
+    content: SizedBox(
+      width: 320,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: const BoxDecoration(
+                  color: AppColors.cream,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.link_rounded,
+                  color: AppColors.green,
+                  size: 32,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '連結家人',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              '貼上家人提供的配對碼\n連結後即可開始使用',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.ink, height: 1.5),
+            ),
+            const SizedBox(height: 24),
+            TextField(
+              controller: input,
+              autocorrect: false,
+              enableSuggestions: false,
+              textInputAction: TextInputAction.done,
+              onChanged: (_) => setState(() {}),
+              onSubmitted: (_) => confirm(),
+              decoration: InputDecoration(
+                labelText: '配對碼',
+                hintText: '輸入或貼上配對碼',
+                filled: true,
+                fillColor: AppColors.paleYellow,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 18,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: AppColors.freshGreen),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(
+                    color: AppColors.green,
+                    width: 2,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, 52),
+                      shape: const StadiumBorder(),
+                      foregroundColor: AppColors.green,
+                    ),
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('取消'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 52),
+                      shape: const StadiumBorder(),
+                      backgroundColor: AppColors.green,
+                    ),
+                    onPressed: input.text.trim().isEmpty ? null : confirm,
+                    child: const Text('確認'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
-      FilledButton(
-        onPressed: () => Navigator.pop(context, input.text),
-        child: const Text('確認連結並接收家人設定'),
-      ),
-    ],
+    ),
   );
 }
