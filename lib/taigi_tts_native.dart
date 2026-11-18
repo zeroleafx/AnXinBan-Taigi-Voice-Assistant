@@ -79,13 +79,12 @@ Future<void> _moveFromFirstVersion(Directory folder) async {
   await old.delete(recursive: true);
 }
 
-/// Downloads the voice (114 MB) on Wi-Fi, or on mobile data once allowed,
+/// Downloads the voice (114 MB) after the user gives consent,
 /// then runs it on a background isolate so the screen does not stall while
 /// a sentence is made.
 class DeviceTaigiSynthesizer implements TaigiSynthesizer {
   _Worker? _worker;
   Future<VoiceSetup>? _preparing;
-  bool _mobileDataAllowed = false;
   bool _disposed = false;
   String? _lastLog;
 
@@ -93,11 +92,9 @@ class DeviceTaigiSynthesizer implements TaigiSynthesizer {
   int get downloadBytes => _files.fold(0, (sum, file) => sum + file.bytes);
 
   @override
-  void allowMobileData() => _mobileDataAllowed = true;
-
-  @override
   Future<VoiceSetup> prepare(
     ModelNetwork network, {
+    bool allowDownload = false,
     void Function(int percent)? onPercent,
   }) async {
     // An earlier attempt may be downloading: let it finish first.
@@ -106,12 +103,14 @@ class DeviceTaigiSynthesizer implements TaigiSynthesizer {
     if (_worker != null) return VoiceSetup.ready;
     return _preparing ??= _prepare(
       network,
+      allowDownload,
       onPercent ?? (_) {},
     ).whenComplete(() => _preparing = null);
   }
 
   Future<VoiceSetup> _prepare(
     ModelNetwork network,
+    bool allowDownload,
     void Function(int percent) onPercent,
   ) async {
     if (_disposed) return VoiceSetup.waiting;
@@ -124,14 +123,8 @@ class DeviceTaigiSynthesizer implements TaigiSynthesizer {
         if (await existing.exists() && await existing.length() == file.bytes) {
           continue;
         }
-        if (network == ModelNetwork.none) {
-          _log('voice not on the phone yet; no connection');
-          return VoiceSetup.waiting;
-        }
-        if (network == ModelNetwork.metered && !_mobileDataAllowed) {
-          _log('voice not on the phone yet; on mobile data, asking first');
-          return VoiceSetup.askMobileData;
-        }
+        if (!allowDownload) return VoiceSetup.needsDownload;
+        if (network == ModelNetwork.none) return VoiceSetup.waiting;
         _log('downloading ${file.name} (${file.bytes} bytes)');
         onPercent(file.name == 'model.onnx' ? 0 : 100);
         await downloadModel(
@@ -199,6 +192,7 @@ class DeviceVoicePlayer implements VoicePlayer {
   /// iOS plays files only; two names take turns, so the file being stopped
   /// is not the one being written.
   int _file = 0;
+  int _playback = 0;
 
   @override
   Future<void> play(Uint8List wav) async {
@@ -207,15 +201,21 @@ class DeviceVoicePlayer implements VoicePlayer {
     }
     // audioplayers would write the bytes to a file without an extension;
     // AVPlayer recognises the format by ".wav".
+    final playback = ++_playback;
     final folder = await getTemporaryDirectory();
+    if (playback != _playback) return;
     _file = 1 - _file;
     final file = File('${folder.path}/taigi_voice_$_file.wav');
     await file.writeAsBytes(wav, flush: true);
+    if (playback != _playback) return;
     await _player.play(DeviceFileSource(file.path, mimeType: 'audio/wav'));
   }
 
   @override
-  Future<void> stop() => _player.stop();
+  Future<void> stop() {
+    _playback++;
+    return _player.stop();
+  }
 
   @override
   void dispose() => unawaited(_player.dispose());

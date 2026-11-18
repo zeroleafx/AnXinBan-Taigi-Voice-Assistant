@@ -22,7 +22,7 @@ void main() {
     assistant = AssistantController(FakePhone());
     synthesizer = FakeSynthesizer();
     player = FakePlayer();
-    voice = TaigiVoice(assistant, synthesizer, player);
+    voice = TaigiVoice(assistant, synthesizer, player)..setEnabled(true);
   });
   tearDown(() {
     voice.dispose();
@@ -88,10 +88,13 @@ void main() {
 
   test('prepare passes the network on and reports where it got to', () async {
     synthesizer.installed = false;
-    expect(await voice.prepare(ModelNetwork.none), VoiceSetup.waiting);
-    expect(await voice.prepare(ModelNetwork.metered), VoiceSetup.askMobileData);
-    voice.allowMobileData();
-    expect(await voice.prepare(ModelNetwork.metered), VoiceSetup.ready);
+    expect(await voice.prepare(ModelNetwork.none), VoiceSetup.needsDownload);
+    expect(await voice.prepare(ModelNetwork.metered), VoiceSetup.needsDownload);
+    expect(synthesizer.downloadAttempts, 0);
+    expect(
+      await voice.prepare(ModelNetwork.metered, allowDownload: true),
+      VoiceSetup.ready,
+    );
     expect(synthesizer.prepared, [
       ModelNetwork.none,
       ModelNetwork.metered,

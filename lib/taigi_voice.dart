@@ -11,9 +11,8 @@ enum VoiceSetup {
   /// The voice is loaded and speaks.
   ready,
 
-  /// The voice is not on the phone and the phone is on mobile data: ask
-  /// before downloading, then call [TaigiSynthesizer.allowMobileData].
-  askMobileData,
+  /// The voice files are missing and need download consent.
+  needsDownload,
 
   /// Not ready yet: no connection, or the download stopped and continues on
   /// the next call.
@@ -22,17 +21,14 @@ enum VoiceSetup {
 
 /// Turns POJ text into speech audio.
 abstract interface class TaigiSynthesizer {
-  /// Gets the voice ready: loads it when it is on the phone, or downloads it
-  /// first on Wi-Fi, or on mobile data once [allowMobileData] was called.
+  /// Loads the local voice, downloading missing files only with consent.
   /// [onPercent] gets 0..100 while downloading; 100 while the download is
   /// checked and the voice loaded. Safe to call again; it never throws.
   Future<VoiceSetup> prepare(
     ModelNetwork network, {
+    bool allowDownload = false,
     void Function(int percent)? onPercent,
   });
-
-  /// The person agreed to download the voice over mobile data.
-  void allowMobileData();
 
   /// The size of the download, for the question.
   int get downloadBytes;
@@ -63,8 +59,15 @@ class TaigiVoice extends ChangeNotifier {
   final TaigiSynthesizer synthesizer;
   final VoicePlayer player;
 
-  /// Where the last [prepare] got to; null before the first one ends.
-  VoiceSetup? setup;
+  bool _enabled = false;
+  bool get enabled => _enabled;
+
+  void setEnabled(bool enabled) {
+    if (_enabled == enabled) return;
+    _enabled = enabled;
+    if (!enabled) stop();
+    notifyListeners();
+  }
 
   /// 0..100 while the voice downloads; null otherwise. 100 means the file is
   /// being checked and the voice loaded.
@@ -78,11 +81,17 @@ class TaigiVoice extends ChangeNotifier {
   bool _disposed = false;
 
   /// See [TaigiSynthesizer.prepare].
-  Future<VoiceSetup> prepare(ModelNetwork network) async {
-    final result = await synthesizer.prepare(network, onPercent: _progress);
+  Future<VoiceSetup> prepare(
+    ModelNetwork network, {
+    bool allowDownload = false,
+  }) async {
+    final result = await synthesizer.prepare(
+      network,
+      allowDownload: allowDownload,
+      onPercent: _progress,
+    );
     if (_disposed) return result;
     downloadPercent = null;
-    setup = result;
     notifyListeners();
     return result;
   }
@@ -93,14 +102,13 @@ class TaigiVoice extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// See [TaigiSynthesizer.allowMobileData].
-  void allowMobileData() => synthesizer.allowMobileData();
-
   /// For example "114 MB".
   String get downloadSize => '${(synthesizer.downloadBytes / 1e6).round()} MB';
 
   /// Says [words] now, in place of whatever is being said.
-  void say(String words) => unawaited(_say(words, ++_turn));
+  void say(String words) {
+    if (_enabled) unawaited(_say(words, ++_turn));
+  }
 
   /// Stops talking, for example before recording starts.
   void stop() => unawaited(_say(null, ++_turn));
@@ -109,6 +117,7 @@ class TaigiVoice extends ChangeNotifier {
     final outcome = assistant.outcome;
     if (identical(outcome, _shown)) return;
     _shown = outcome;
+    if (!_enabled) return;
     final words = outcome == null ? null : taigiSpeech(outcome);
     if (outcome != null && words == null) {
       debugPrint('TaigiVoice: no Taiwanese for "${outcome.title}"');

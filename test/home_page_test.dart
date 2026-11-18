@@ -24,7 +24,6 @@ class QuietBackend implements RecordingBackend {
   @override
   Stream<double> get decibels => const Stream.empty();
   final _states = StreamController<RecordState>.broadcast();
-  final _done = StreamController<void>.broadcast();
   @override
   Future<String?> retainLatest({String? keepPath}) async => keepPath;
   @override
@@ -36,17 +35,10 @@ class QuietBackend implements RecordingBackend {
   @override
   Future<void> cancel() async {}
   @override
-  Future<void> play(String path) async {}
-  @override
-  Future<void> stopPlayback() async {}
-  @override
-  Stream<void> get playbackCompleted => _done.stream;
-  @override
   Stream<RecordState> get states => _states.stream;
   @override
   Future<void> dispose() async {
     await _states.close();
-    await _done.close();
   }
 }
 
@@ -469,65 +461,51 @@ void main() {
       await settle(tester);
     }
 
-    testWidgets('on mobile data its card asks, then shows the progress', (
-      tester,
-    ) async {
-      await openOn(tester, ModelNetwork.metered);
-      expect(find.text('下載台語語音'), findsOneWidget);
-      expect(find.text('114 MB，現在不是 Wi-Fi'), findsOneWidget);
-      expect(synthesizer.installed, isFalse);
+    for (final network in [ModelNetwork.metered, ModelNetwork.unmetered]) {
+      testWidgets('asks before downloading the voice on ${network.name}', (
+        tester,
+      ) async {
+        synthesizer.downloadGate = Completer<void>();
+        await openOn(tester, network);
+        expect(find.byTooltip('開啟語音模式'), findsOneWidget);
+        expect(synthesizer.prepared, isEmpty);
+        expect(voice.enabled, isFalse);
 
-      synthesizer.downloadGate = Completer<void>();
-      await tester.tap(find.text('用行動數據下載'));
-      await settle(tester);
-      expect(find.text('下載台語語音'), findsNothing);
-      expect(find.text('台語語音下載中 42%'), findsOneWidget);
-      expect(find.byType(LinearProgressIndicator), findsOneWidget);
-      expect(synthesizer.mobileDataAllowed, isTrue);
+        await press(tester, find.byTooltip('開啟語音模式'));
+        expect(find.text('要下載台語朗讀模型嗎？'), findsOneWidget);
+        expect(find.textContaining('114 MB'), findsOneWidget);
+        expect(synthesizer.downloadAttempts, 0);
 
-      synthesizer.downloadGate!.complete();
-      await settle(tester);
-      expect(find.text('台語語音下載中 42%'), findsNothing);
-      expect(synthesizer.installed, isTrue);
-      expect(find.byType(HintsCard), findsOneWidget);
-    });
+        await press(tester, find.text('確定'));
+        expect(find.text('台語語音下載中 42%'), findsOneWidget);
+        expect(synthesizer.downloadAttempts, 1);
 
-    testWidgets('its card also shows beside the speech model download', (
+        synthesizer.downloadGate!.complete();
+        await settle(tester);
+        expect(find.text('台語語音下載中 42%'), findsNothing);
+        expect(find.byTooltip('關閉語音模式'), findsOneWidget);
+        expect(voice.enabled, isTrue);
+      });
+    }
+
+    testWidgets('voice setup appears on home after deferring the recognizer', (
       tester,
     ) async {
       await openOn(tester, ModelNetwork.metered, speechModel: false);
       expect(find.text('先下載語音模型'), findsOneWidget);
-      expect(find.text('下載台語語音'), findsOneWidget);
-    });
+      expect(find.byTooltip('開啟語音模式'), findsNothing);
+      await press(tester, find.text('稍後下載，先使用錄音'));
+      await press(tester, find.byTooltip('開啟語音模式'));
+      expect(find.text('要下載台語朗讀模型嗎？'), findsOneWidget);
+      await press(tester, find.text('稍後'));
+      expect(find.text('先下載語音模型'), findsOneWidget);
+      expect(synthesizer.downloadAttempts, 0);
 
-    testWidgets('"not now" is not asked again until the next launch', (
-      tester,
-    ) async {
-      await openOn(tester, ModelNetwork.metered);
-      await tester.tap(find.text('先不要'));
-      await settle(tester);
-      expect(find.text('下載台語語音'), findsNothing);
-
-      // Coming back to the app checks the models again.
       await model!.refresh();
       await settle(tester);
-      expect(find.text('下載台語語音'), findsNothing);
-      expect(synthesizer.mobileDataAllowed, isFalse);
-      expect(synthesizer.installed, isFalse);
-    });
-
-    testWidgets('on Wi-Fi it downloads without asking, showing progress', (
-      tester,
-    ) async {
-      synthesizer.downloadGate = Completer<void>();
-      await openOn(tester, ModelNetwork.unmetered);
-      expect(find.text('下載台語語音'), findsNothing);
-      expect(find.text('台語語音下載中 42%'), findsOneWidget);
-
-      synthesizer.downloadGate!.complete();
-      await settle(tester);
-      expect(find.text('台語語音下載中 42%'), findsNothing);
-      expect(synthesizer.installed, isTrue);
+      expect(find.text('要下載台語朗讀模型嗎？'), findsNothing);
+      await press(tester, find.byTooltip('開啟語音模式'));
+      expect(find.text('要下載台語朗讀模型嗎？'), findsOneWidget);
     });
 
     testWidgets('a recording that was not understood is read aloud', (
@@ -535,6 +513,8 @@ void main() {
     ) async {
       synthesizer.installed = true;
       await openOn(tester, ModelNetwork.unmetered);
+      await press(tester, find.byTooltip('開啟語音模式'));
+      expect(find.byTooltip('關閉語音模式'), findsOneWidget);
       await say(tester, '');
       await settle(tester);
       expect(find.text('沒有聽清楚'), findsOneWidget);
@@ -548,10 +528,55 @@ void main() {
       await settle(tester);
     });
 
-    testWidgets('with no connection it waits quietly', (tester) async {
+    testWidgets('turning voice off stops playback and keeps the local model', (
+      tester,
+    ) async {
+      synthesizer.installed = true;
       await openOn(tester, ModelNetwork.none);
-      expect(find.text('下載台語語音'), findsNothing);
-      expect(synthesizer.installed, isFalse);
+      await press(tester, find.byTooltip('開啟語音模式'));
+      expect(find.byTooltip('關閉語音模式'), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+      await say(tester, '開手電筒');
+      expect(player.played, hasLength(1));
+
+      await press(tester, find.byTooltip('關閉語音模式'));
+      expect(player.events.last, 'stop');
+      await say(tester, '手電筒關掉');
+      expect(find.text('手電筒關了'), findsOneWidget);
+      expect(player.played, hasLength(1));
+
+      await press(tester, find.byTooltip('開啟語音模式'));
+      expect(find.byTooltip('關閉語音模式'), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(synthesizer.downloadAttempts, 0);
+    });
+
+    for (final enabled in [false, true]) {
+      testWidgets('SOS keeps voice enabled=$enabled without a toggle', (
+        tester,
+      ) async {
+        synthesizer.installed = true;
+        await openOn(tester, ModelNetwork.unmetered);
+        if (enabled) await press(tester, find.byTooltip('開啟語音模式'));
+        await press(tester, find.text('求救'));
+        expect(find.text('需要幫忙嗎？'), findsOneWidget);
+        expect(find.byTooltip('開啟語音模式'), findsNothing);
+        expect(find.byTooltip('關閉語音模式'), findsNothing);
+        expect(player.played.isNotEmpty, enabled);
+        await press(tester, find.byTooltip('關閉'));
+        expect(find.byTooltip(enabled ? '關閉語音模式' : '開啟語音模式'), findsOneWidget);
+      });
+    }
+
+    testWidgets('an offline download cannot be confirmed', (tester) async {
+      await openOn(tester, ModelNetwork.none);
+      await press(tester, find.byTooltip('開啟語音模式'));
+      expect(find.textContaining('目前沒有網路連線'), findsOneWidget);
+      final confirm = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, '確定'),
+      );
+      expect(confirm.onPressed, isNull);
+      expect(synthesizer.downloadAttempts, 0);
     });
   });
 }

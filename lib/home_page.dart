@@ -49,8 +49,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// Reads each card aloud in Taiwanese; null in tests and where unsupported.
   TaigiVoice? _voice;
 
-  /// "先不要" on mobile data hides the voice card until the next launch.
-  bool _voiceDeclined = false;
+  bool _preparingVoice = false;
   bool _deferred = false;
 
   @override
@@ -106,25 +105,89 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ? _breeze!.transcribe
           : null;
     }
-    unawaited(_prepareVoice());
     _refresh();
   }
 
   ModelNetwork get _network => _model.status?.network ?? ModelNetwork.none;
 
-  /// The voice (114 MB) does not wait for the speech model, so the SOS card
-  /// is read aloud too. On Wi-Fi it downloads by itself; on mobile data its
-  /// card asks first. With an unknown network it is only loaded if on the
-  /// phone.
-  Future<void> _prepareVoice() async {
-    await _voice?.prepare(_network);
+  Future<void> _toggleVoice() async {
+    final voice = _voice;
+    if (voice == null || _preparingVoice) return;
+    if (voice.enabled) {
+      voice.setEnabled(false);
+      return;
+    }
+
+    setState(() => _preparingVoice = true);
+    try {
+      var result = await voice.prepare(_network);
+      if (!mounted) return;
+      if (result == VoiceSetup.needsDownload) {
+        final network = _network;
+        final download = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            scrollable: true,
+            icon: const Icon(Icons.record_voice_over_rounded, size: 36),
+            title: const Text('要下載台語朗讀模型嗎？'),
+            content: Text(switch (network) {
+              ModelNetwork.none => '${voice.downloadSize}，目前沒有網路連線。',
+              ModelNetwork.metered => '${voice.downloadSize}，目前使用行動數據。',
+              ModelNetwork.unmetered => '${voice.downloadSize}，只需要下載一次。',
+            }),
+            actions: [
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('稍後'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: network == ModelNetwork.none
+                          ? null
+                          : () => Navigator.pop(context, true),
+                      child: const Text('確定'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+        if (!mounted || download != true) return;
+        result = await voice.prepare(network, allowDownload: true);
+        if (!mounted) return;
+      }
+      if (result == VoiceSetup.ready) {
+        voice.setEnabled(true);
+      } else {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('台語朗讀準備失敗，請再試一次。')));
+      }
+    } finally {
+      if (mounted) setState(() => _preparingVoice = false);
+    }
   }
 
-  void _downloadVoiceOnMobileData() {
+  Widget? _voiceToggle() {
     final voice = _voice;
-    if (voice == null) return;
-    voice.allowMobileData();
-    unawaited(voice.prepare(_network));
+    if (voice == null) return null;
+    return IconButton.filledTonal(
+      tooltip: voice.enabled ? '關閉語音模式' : '開啟語音模式',
+      isSelected: voice.enabled,
+      icon: const Icon(Icons.volume_off_rounded),
+      selectedIcon: const Icon(Icons.volume_up_rounded),
+      style: IconButton.styleFrom(
+        minimumSize: const Size.square(48),
+        backgroundColor: voice.enabled ? AppColors.green : AppColors.cream,
+        foregroundColor: voice.enabled ? Colors.white : AppColors.ink,
+      ),
+      onPressed: _preparingVoice ? null : _toggleVoice,
+    );
   }
 
   void _refresh() {
@@ -257,12 +320,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 _modelPanel(),
-                                // The voice can download before the speech
-                                // model, so its card shows here too.
-                                if (_voicePanel() case final voice?) ...[
-                                  const SizedBox(height: 12),
-                                  voice,
-                                ],
                                 if (_model.phase != ModelPhase.downloading)
                                   TextButton(
                                     onPressed: () =>
@@ -310,7 +367,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         _model.phase != ModelPhase.ready &&
                         !_recording.isRecording)
                       TextButton(
-                        onPressed: _recording.busy || _recording.isPlaying
+                        onPressed: _recording.busy
                             ? null
                             : () => setState(() => _deferred = false),
                         child: const Text('下載語音模型以啟用辨識'),
@@ -398,9 +455,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         heard: choosing ? null : outcome.heard,
         trailing: choosing
             ? null
-            : outcome.heard == null
+            : _helpAsked
             ? _closeButton()
-            : _replayButton(),
+            : outcome.heard == null
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_voiceToggle() case final toggle?) toggle,
+                  _closeButton(),
+                ],
+              )
+            : _voiceToggle(),
         gap: choosing || outcome.buttons.length > 2 ? 8 : 12,
         children: [
           if (outcome.showExamples) const _Examples(),
@@ -419,6 +484,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         ],
       );
     }
+    if (_voiceDownloadPanel() case final progress?) return progress;
     if (_model.blocksSpeech) return _modelPanel();
     final canRetry =
         recording.speechError != null &&
@@ -432,7 +498,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         icon: Icons.hearing_disabled_rounded,
         title: '沒有聽清楚',
         detail: recording.speechError,
-        trailing: _replayButton(),
+        trailing: _voiceToggle(),
         children: [
           _CardButton(
             icon: Icons.refresh_rounded,
@@ -454,7 +520,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         tone: OutcomeTone.done,
         icon: Icons.check_rounded,
         title: '錄好了',
-        trailing: _replayButton(),
+        trailing: _voiceToggle(),
         children: [
           if (recording.transcribe != null)
             _CardButton(
@@ -465,7 +531,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         ],
       );
     }
-    if (_voicePanel() case final card?) return card;
     // The light stays on after its card is gone, so its off button stays too.
     if (_assistant.torchOn) {
       return ResultCard(
@@ -482,7 +547,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         ],
       );
     }
-    return const HintsCard(key: ValueKey('hints'));
+    return HintsCard(key: const ValueKey('hints'), trailing: _voiceToggle());
   }
 
   /// Asks before the large speech model download, then shows its progress.
@@ -522,6 +587,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         final network = status?.network ?? ModelNetwork.unmetered;
         return ResultCard(
           key: const ValueKey('model-missing'),
+          trailing: _deferred ? _voiceToggle() : null,
           tone: network == ModelNetwork.unmetered
               ? OutcomeTone.info
               : OutcomeTone.problem,
@@ -550,9 +616,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  /// Asks before the voice is downloaded on mobile data, then shows its
-  /// progress, in the same card as the speech model download.
-  Widget? _voicePanel() {
+  /// Shows progress while the Taiwanese voice model downloads.
+  Widget? _voiceDownloadPanel() {
     final voice = _voice;
     if (voice == null) return null;
     final size = voice.downloadSize;
@@ -567,32 +632,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         children: [_DownloadBar(value: checking ? null : percent / 100)],
       );
     }
-    if (voice.setup == VoiceSetup.askMobileData && !_voiceDeclined) {
-      return ResultCard(
-        key: const ValueKey('voice-ask'),
-        tone: OutcomeTone.problem,
-        icon: Icons.record_voice_over_rounded,
-        title: '下載台語語音',
-        detail: '$size，現在不是 Wi-Fi',
-        children: [
-          _CardButton(
-            icon: Icons.download_rounded,
-            label: '用行動數據下載',
-            onPressed: _downloadVoiceOnMobileData,
-          ),
-          _CardButton(
-            icon: Icons.close_rounded,
-            label: '先不要',
-            kind: ButtonKind.quiet,
-            onPressed: () => setState(() => _voiceDeclined = true),
-          ),
-        ],
-      );
-    }
     return null;
   }
 
-  /// Cards that did not come from speech have nothing to replay.
   Widget _closeButton() => IconButton.filledTonal(
     tooltip: '關閉',
     iconSize: 26,
@@ -604,24 +646,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     onPressed: _assistant.clear,
     icon: const Icon(Icons.close_rounded),
   );
-
-  Widget? _replayButton() {
-    final recording = _recording;
-    if (recording.lastPath == null || recording.isRecording) return null;
-    return IconButton.filledTonal(
-      tooltip: recording.isPlaying ? '停止播放' : '播放剛才的錄音',
-      iconSize: 28,
-      style: IconButton.styleFrom(
-        backgroundColor: AppColors.cream,
-        foregroundColor: AppColors.green,
-        minimumSize: const Size.square(52),
-      ),
-      onPressed: recording.busy ? null : recording.togglePlayback,
-      icon: Icon(
-        recording.isPlaying ? Icons.stop_rounded : Icons.volume_up_rounded,
-      ),
-    );
-  }
 }
 
 class _TopBar extends StatelessWidget {
@@ -751,7 +775,9 @@ class _Card extends StatelessWidget {
 
 /// What can be said, shown before the first request.
 class HintsCard extends StatelessWidget {
-  const HintsCard({super.key});
+  const HintsCard({super.key, this.trailing});
+
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) => _Card(
@@ -759,13 +785,20 @@ class HintsCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          '可以這樣講',
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: AppColors.ink.withValues(alpha: 0.6),
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '可以這樣講',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.ink.withValues(alpha: 0.6),
+                ),
+              ),
+            ),
+            if (trailing case final control?) control,
+          ],
         ),
         const SizedBox(height: 12),
         const _Examples(),
