@@ -12,7 +12,7 @@ class FakeSynthesizer implements TaigiSynthesizer {
 
   /// Whether the voice is already on the phone.
   bool installed = true;
-  bool mobileDataAllowed = false;
+  bool downloadAllowed = false;
 
   /// When set, each sentence waits for the test to finish it.
   final pending = <String, Completer<Uint8List?>>{};
@@ -23,7 +23,7 @@ class FakeSynthesizer implements TaigiSynthesizer {
   int get downloadBytes => 114024708 + 474;
 
   @override
-  void allowMobileData() => mobileDataAllowed = true;
+  void allowDownload() => downloadAllowed = true;
 
   /// When set, a download reports [downloadReaches] percent and waits for the
   /// test to complete it.
@@ -37,20 +37,15 @@ class FakeSynthesizer implements TaigiSynthesizer {
   }) async {
     prepared.add(network);
     if (installed) return VoiceSetup.ready;
-    switch (network) {
-      case ModelNetwork.none:
-        return VoiceSetup.waiting;
-      case ModelNetwork.metered when !mobileDataAllowed:
-        return VoiceSetup.askMobileData;
-      default:
-        final gate = downloadGate;
-        if (gate != null) {
-          onPercent?.call(downloadReaches);
-          await gate.future;
-        }
-        installed = true;
-        return VoiceSetup.ready;
+    if (network == ModelNetwork.none) return VoiceSetup.waiting;
+    if (!downloadAllowed) return VoiceSetup.askToDownload;
+    final gate = downloadGate;
+    if (gate != null) {
+      onPercent?.call(downloadReaches);
+      await gate.future;
     }
+    installed = true;
+    return VoiceSetup.ready;
   }
 
   @override

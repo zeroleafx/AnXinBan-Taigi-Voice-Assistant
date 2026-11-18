@@ -89,11 +89,17 @@ void main() {
   test('prepare passes the network on and reports where it got to', () async {
     synthesizer.installed = false;
     expect(await voice.prepare(ModelNetwork.none), VoiceSetup.waiting);
-    expect(await voice.prepare(ModelNetwork.metered), VoiceSetup.askMobileData);
-    voice.allowMobileData();
+    // Wi-Fi or not, nothing is downloaded before the person agrees.
+    expect(
+      await voice.prepare(ModelNetwork.unmetered),
+      VoiceSetup.askToDownload,
+    );
+    expect(await voice.prepare(ModelNetwork.metered), VoiceSetup.askToDownload);
+    voice.allowDownload();
     expect(await voice.prepare(ModelNetwork.metered), VoiceSetup.ready);
     expect(synthesizer.prepared, [
       ModelNetwork.none,
+      ModelNetwork.unmetered,
       ModelNetwork.metered,
       ModelNetwork.metered,
     ]);

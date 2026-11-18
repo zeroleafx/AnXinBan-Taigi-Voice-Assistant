@@ -11,9 +11,9 @@ enum VoiceSetup {
   /// The voice is loaded and speaks.
   ready,
 
-  /// The voice is not on the phone and the phone is on mobile data: ask
-  /// before downloading, then call [TaigiSynthesizer.allowMobileData].
-  askMobileData,
+  /// The voice is not on the phone: ask before downloading, as for the
+  /// speech model, then call [TaigiSynthesizer.allowDownload].
+  askToDownload,
 
   /// Not ready yet: no connection, or the download stopped and continues on
   /// the next call.
@@ -23,7 +23,7 @@ enum VoiceSetup {
 /// Turns POJ text into speech audio.
 abstract interface class TaigiSynthesizer {
   /// Gets the voice ready: loads it when it is on the phone, or downloads it
-  /// first on Wi-Fi, or on mobile data once [allowMobileData] was called.
+  /// first once [allowDownload] was called, on Wi-Fi or mobile data alike.
   /// [onPercent] gets 0..100 while downloading; 100 while the download is
   /// checked and the voice loaded. Safe to call again; it never throws.
   Future<VoiceSetup> prepare(
@@ -31,8 +31,8 @@ abstract interface class TaigiSynthesizer {
     void Function(int percent)? onPercent,
   });
 
-  /// The person agreed to download the voice over mobile data.
-  void allowMobileData();
+  /// The person agreed to download the voice.
+  void allowDownload();
 
   /// The size of the download, for the question.
   int get downloadBytes;
@@ -93,8 +93,8 @@ class TaigiVoice extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// See [TaigiSynthesizer.allowMobileData].
-  void allowMobileData() => synthesizer.allowMobileData();
+  /// See [TaigiSynthesizer.allowDownload].
+  void allowDownload() => synthesizer.allowDownload();
 
   /// For example "114 MB".
   String get downloadSize => '${(synthesizer.downloadBytes / 1e6).round()} MB';

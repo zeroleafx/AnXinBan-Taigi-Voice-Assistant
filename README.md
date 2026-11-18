@@ -68,10 +68,11 @@ On Android and iOS each new card is also read aloud in Taiwanese, as are
   `lib/taigi_phrases.dart`, as complete sentences and avoiding nasal vowels,
   whose ⁿ the model drops. Times and dates are read; names, numbers and
   addresses stay on the card. A test fails if a card has no Taiwanese words.
-- The 114 MB ONNX model downloads by itself on Wi-Fi; on mobile data a card
-  asks first and then shows progress. It does not wait for the speech model,
-  so the SOS card is read too. It is kept next to the speech model, outside
-  iCloud and Android backups.
+- Like the speech model, the 114 MB ONNX model is downloaded only after its
+  card asks, on Wi-Fi too (「開始下載」, or 「用行動數據下載」 off Wi-Fi), and the
+  card then shows progress. It does not wait for the speech model, so the
+  SOS card is read too. It is kept next to the speech model, outside iCloud
+  and Android backups.
 - Speech stops when recording starts.
 - To debug, filter the run log for `TaigiVoice`: download progress, `ready`,
   `saying "…"`, or `no Taiwanese for "<card title>"`.

@@ -79,13 +79,12 @@ Future<void> _moveFromFirstVersion(Directory folder) async {
   await old.delete(recursive: true);
 }
 
-/// Downloads the voice (114 MB) on Wi-Fi, or on mobile data once allowed,
-/// then runs it on a background isolate so the screen does not stall while
-/// a sentence is made.
+/// Downloads the voice (114 MB) once the person agreed, then runs it on a
+/// background isolate so the screen does not stall while a sentence is made.
 class DeviceTaigiSynthesizer implements TaigiSynthesizer {
   _Worker? _worker;
   Future<VoiceSetup>? _preparing;
-  bool _mobileDataAllowed = false;
+  bool _downloadAllowed = false;
   bool _disposed = false;
   String? _lastLog;
 
@@ -93,7 +92,7 @@ class DeviceTaigiSynthesizer implements TaigiSynthesizer {
   int get downloadBytes => _files.fold(0, (sum, file) => sum + file.bytes);
 
   @override
-  void allowMobileData() => _mobileDataAllowed = true;
+  void allowDownload() => _downloadAllowed = true;
 
   @override
   Future<VoiceSetup> prepare(
@@ -128,9 +127,9 @@ class DeviceTaigiSynthesizer implements TaigiSynthesizer {
           _log('voice not on the phone yet; no connection');
           return VoiceSetup.waiting;
         }
-        if (network == ModelNetwork.metered && !_mobileDataAllowed) {
-          _log('voice not on the phone yet; on mobile data, asking first');
-          return VoiceSetup.askMobileData;
+        if (!_downloadAllowed) {
+          _log('voice not on the phone yet; asking before downloading');
+          return VoiceSetup.askToDownload;
         }
         _log('downloading ${file.name} (${file.bytes} bytes)');
         onPercent(file.name == 'model.onnx' ? 0 : 100);

@@ -113,17 +113,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   ModelNetwork get _network => _model.status?.network ?? ModelNetwork.none;
 
   /// The voice (114 MB) does not wait for the speech model, so the SOS card
-  /// is read aloud too. On Wi-Fi it downloads by itself; on mobile data its
-  /// card asks first. With an unknown network it is only loaded if on the
-  /// phone.
+  /// is read aloud too. Like the speech model, its card asks before it is
+  /// downloaded, on Wi-Fi too. With no connection it is only loaded if
+  /// already on the phone.
   Future<void> _prepareVoice() async {
     await _voice?.prepare(_network);
   }
 
-  void _downloadVoiceOnMobileData() {
+  void _downloadVoice() {
     final voice = _voice;
     if (voice == null) return;
-    voice.allowMobileData();
+    voice.allowDownload();
     unawaited(voice.prepare(_network));
   }
 
@@ -550,8 +550,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  /// Asks before the voice is downloaded on mobile data, then shows its
-  /// progress, in the same card as the speech model download.
+  /// Asks before the voice is downloaded, then shows its progress, worded
+  /// and laid out like the speech model download.
   Widget? _voicePanel() {
     final voice = _voice;
     if (voice == null) return null;
@@ -567,18 +567,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         children: [_DownloadBar(value: checking ? null : percent / 100)],
       );
     }
-    if (voice.setup == VoiceSetup.askMobileData && !_voiceDeclined) {
+    if (voice.setup == VoiceSetup.askToDownload && !_voiceDeclined) {
+      final metered = _network == ModelNetwork.metered;
       return ResultCard(
         key: const ValueKey('voice-ask'),
-        tone: OutcomeTone.problem,
+        tone: metered ? OutcomeTone.problem : OutcomeTone.info,
         icon: Icons.record_voice_over_rounded,
         title: '下載台語語音',
-        detail: '$size，現在不是 Wi-Fi',
+        detail: metered ? '$size，現在不是 Wi-Fi' : '$size，只要下載一次',
         children: [
           _CardButton(
             icon: Icons.download_rounded,
-            label: '用行動數據下載',
-            onPressed: _downloadVoiceOnMobileData,
+            label: metered ? '用行動數據下載' : '開始下載',
+            onPressed: _downloadVoice,
           ),
           _CardButton(
             icon: Icons.close_rounded,

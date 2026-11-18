@@ -483,7 +483,7 @@ void main() {
       expect(find.text('下載台語語音'), findsNothing);
       expect(find.text('台語語音下載中 42%'), findsOneWidget);
       expect(find.byType(LinearProgressIndicator), findsOneWidget);
-      expect(synthesizer.mobileDataAllowed, isTrue);
+      expect(synthesizer.downloadAllowed, isTrue);
 
       synthesizer.downloadGate!.complete();
       await settle(tester);
@@ -512,16 +512,22 @@ void main() {
       await model!.refresh();
       await settle(tester);
       expect(find.text('下載台語語音'), findsNothing);
-      expect(synthesizer.mobileDataAllowed, isFalse);
+      expect(synthesizer.downloadAllowed, isFalse);
       expect(synthesizer.installed, isFalse);
     });
 
-    testWidgets('on Wi-Fi it downloads without asking, showing progress', (
-      tester,
-    ) async {
-      synthesizer.downloadGate = Completer<void>();
+    testWidgets('on Wi-Fi it asks too, like the speech model', (tester) async {
       await openOn(tester, ModelNetwork.unmetered);
-      expect(find.text('下載台語語音'), findsNothing);
+      // Nothing downloads before the person agrees.
+      await settle(tester);
+      expect(synthesizer.installed, isFalse);
+      expect(find.text('下載台語語音'), findsOneWidget);
+      expect(find.text('114 MB，只要下載一次'), findsOneWidget);
+      expect(find.text('用行動數據下載'), findsNothing);
+
+      synthesizer.downloadGate = Completer<void>();
+      await tester.tap(find.text('開始下載'));
+      await settle(tester);
       expect(find.text('台語語音下載中 42%'), findsOneWidget);
 
       synthesizer.downloadGate!.complete();
