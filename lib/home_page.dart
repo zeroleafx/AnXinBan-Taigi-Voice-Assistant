@@ -460,10 +460,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             : outcome.heard == null
             ? Row(
                 mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_voiceToggle() case final toggle?) toggle,
-                  _closeButton(),
-                ],
+                children: [?_voiceToggle(), _closeButton()],
               )
             : _voiceToggle(),
         gap: choosing || outcome.buttons.length > 2 ? 8 : 12,
@@ -797,7 +794,7 @@ class HintsCard extends StatelessWidget {
                 ),
               ),
             ),
-            if (trailing case final control?) control,
+            ?trailing,
           ],
         ),
         const SizedBox(height: 12),
