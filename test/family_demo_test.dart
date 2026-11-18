@@ -137,7 +137,7 @@ void main() {
           ),
         ),
       );
-      for (final button in ['取消', '確認連結並接收家人設定']) {
+      for (final button in ['取消', '確認']) {
         await tester.tap(find.text('配對'));
         await tester.pumpAndSettle();
         await tester.enterText(find.byType(TextField), 'test-code');
