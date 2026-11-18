@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
 import 'family_demo.dart';
+import 'elder_pairing_page.dart';
 
 class WelcomePage extends StatelessWidget {
   const WelcomePage({super.key});
@@ -9,7 +10,9 @@ class WelcomePage extends StatelessWidget {
   void _openRole(BuildContext context, {required bool isFamily}) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => FamilyDemoPage(isFamily: isFamily),
+        builder: (_) => isFamily
+            ? const FamilyDemoPage(isFamily: true)
+            : const ElderPairingPage(),
       ),
     );
   }

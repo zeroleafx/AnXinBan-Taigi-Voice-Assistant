@@ -7,6 +7,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Deliberately local: pending edits and the elder's applied copy are separate.
 class FamilyDemoStore {
   final preferences = DemoPreferences();
+  Future<void> reconcileCloudDeletion(String owner, String? clearedAt) async {
+    if (clearedAt == null) return;
+    final key = 'family_settings_cleared_$owner';
+    if (await preferences.getString(key) == clearedAt) return;
+    await write('pending', []);
+    await preferences.setString(key, clearedAt);
+  }
+
   Future<List<Map<String, String>>> read(String copy) async {
     final raw = await preferences.getString('family_demo_$copy');
     if (raw == null) return [];

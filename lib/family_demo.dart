@@ -116,8 +116,12 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
     if (!FamilyCloud.available || cloud.user == null) return;
     final latestDevices = await cloud.links();
     devices = latestDevices;
-    if (unlocked) {
+    if (cloud.hasFamilyAccount) {
       final remote = await cloud.snapshot(cloud.user!);
+      await store.reconcileCloudDeletion(
+        cloud.user!,
+        remote?['settings_cleared_at'] as String?,
+      );
       revision = (remote?['revision'] as num?)?.toInt() ?? 0;
     } else {
       await cloud.pull();
@@ -191,7 +195,7 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
   Future<void> unlinkDevice(String id) async {
     if (!await confirmRemoval(
       '解除配對？',
-      '解除後將停止同步。長輩手機下次連線確認解除時，會清除已同步的聯絡人與地址；離線時無法立即清除。',
+      '解除後將停止同步；若這是最後一位長輩，家人的雲端設定也會刪除。雙方手機上的副本或草稿會在下次連線同步時清除，無法復原。',
     )) {
       return;
     }
@@ -265,6 +269,9 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted && FamilyCloud.available) {
+      unawaited(_refreshAfterLogin());
+    }
     // iOS can become inactive for system overlays without leaving the app.
     // Lock only when it actually enters the background.
     if ((state == AppLifecycleState.paused ||
@@ -308,7 +315,7 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
   }
 
   Future<void> enterFamily() async {
-    if (FamilyCloud.available && cloud.user == null) {
+    if (FamilyCloud.available && !cloud.hasFamilyAccount) {
       message = '請先使用 Google 登入，再解鎖設定';
       return;
     }
@@ -321,8 +328,12 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
     if (pin == null) return;
     if (!exists) await store.setPin(pin);
     final ok = await store.unlock(pin);
-    if (ok && FamilyCloud.available && cloud.user != null) {
+    if (ok && FamilyCloud.available && cloud.hasFamilyAccount) {
       final remote = await cloud.snapshot(cloud.user!);
+      await store.reconcileCloudDeletion(
+        cloud.user!,
+        remote?['settings_cleared_at'] as String?,
+      );
       revision = (remote?['revision'] as num?)?.toInt() ?? 0;
       final items = remote?['entries'];
       await store.write(
@@ -412,16 +423,16 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                 ),
                 if (FamilyCloud.available) ...[
                   Text(
-                    cloud.user == null
+                    !cloud.hasFamilyAccount
                         ? '登入後可跨手機連結'
                         : '已登入：${cloud.client.auth.currentUser?.email ?? "Google 帳號"}',
                   ),
-                  if (cloud.user == null)
+                  if (!cloud.hasFamilyAccount)
                     OutlinedButton(
                       onPressed: busy ? null : () => run(cloud.login),
                       child: const Text('使用 Google 登入'),
                     ),
-                  if (cloud.user != null) ...[
+                  if (cloud.hasFamilyAccount) ...[
                     if (devices.any((d) => d['elder_id'] == cloud.user))
                       Card(
                         child: ListTile(
@@ -493,7 +504,13 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                       ))
                         ListTile(
                           title: const Text('已連結長輩'),
-                          subtitle: Text('已套用版本 ${device["applied_revision"]}'),
+                          subtitle: Text(
+                            revision > 0 &&
+                                    (device['applied_revision'] as num? ?? 0) ==
+                                        revision
+                                ? '設定已同步'
+                                : '等待同步',
+                          ),
                           trailing: IconButton(
                             tooltip: '解除配對',
                             icon: const Icon(Icons.link_off),
@@ -523,8 +540,8 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                                 if (mounted) {
                                   setState(
                                     () => message = revision == before
-                                        ? '設定沒有變更，不需重新發佈（版本 $revision）'
-                                        : '已送出版本 $revision，請長輩端同步後查看套用狀態',
+                                        ? '設定沒有變更，不需重新發佈'
+                                        : '設定已發佈，等待長輩端同步',
                                   );
                                 }
                               }),
@@ -565,7 +582,8 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                       onPressed: busy
                           ? null
                           : () => run(() async {
-                              if (FamilyCloud.available && cloud.user != null) {
+                              if (FamilyCloud.available &&
+                                  cloud.hasFamilyAccount) {
                                 try {
                                   await cloud.pull().timeout(
                                     const Duration(seconds: 8),
@@ -591,7 +609,8 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                         widget.isFamily == true ? '解鎖設定' : '我是家人，管理設定',
                       ),
                       onPressed:
-                          busy || (FamilyCloud.available && cloud.user == null)
+                          busy ||
+                              (FamilyCloud.available && !cloud.hasFamilyAccount)
                           ? null
                           : () => run(enterFamily),
                     ),

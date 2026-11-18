@@ -6,7 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'app_theme.dart';
 import 'family_cloud.dart';
-import 'welcome_page.dart';
+import 'startup_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,7 +29,7 @@ const _taiwan = Locale.fromSubtags(
 );
 
 class AnXinBanApp extends StatelessWidget {
-  const AnXinBanApp({super.key, this.home = const WelcomePage()});
+  const AnXinBanApp({super.key, this.home = const StartupPage()});
 
   final Widget home;
 

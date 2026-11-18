@@ -50,8 +50,19 @@ class FamilyCloud {
 
   SupabaseClient get client => Supabase.instance.client;
   String? get user => client.auth.currentUser?.id;
+  bool get hasFamilyAccount =>
+      client.auth.currentUser != null && !client.auth.currentUser!.isAnonymous;
+  Future<void> ensureElderIdentity() async {
+    if (client.auth.currentSession == null) {
+      await client.auth.signInAnonymously();
+    }
+  }
+
   Future<void> login() async {
-    if (client.auth.currentSession != null) return;
+    if (hasFamilyAccount) return;
+    if (client.auth.currentUser?.isAnonymous == true) {
+      throw const FamilyPublishException('此裝置已用於長輩配對，請使用家人的手機登入管理設定');
+    }
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
       final oauth = await client.auth.getOAuthSignInUrl(
         provider: OAuthProvider.google,
@@ -82,6 +93,24 @@ class FamilyCloud {
       await client.rpc('create_family_invitation') as String;
   Future<void> pair(String code) async {
     await client.rpc('accept_family_invitation', params: {'code': code.trim()});
+    await FamilyDemoStore().preferences.setString('paired_elder_user', user!);
+  }
+
+  Future<bool> shouldOpenRecorder() async {
+    final id = user;
+    if (id == null) return false;
+    final preferences = FamilyDemoStore().preferences;
+    try {
+      final paired = (await links().timeout(const Duration(seconds: 5)))
+          .any((link) => link['elder_id'] == id);
+      if (user != id) return false;
+      await preferences.setString('paired_elder_user', paired ? id : '');
+      if (!paired) await FamilyDemoStore().write('applied', []);
+      return paired;
+    } catch (_) {
+      return user == id &&
+          await preferences.getString('paired_elder_user') == id;
+    }
   }
 
   Future<int> publish(List<Map<String, String>> entries, int revision) async {
@@ -110,9 +139,11 @@ class FamilyCloud {
         .where((e) => e['elder_id'] == user)
         .toList();
     if (matches.isEmpty) {
+      await FamilyDemoStore().preferences.setString('paired_elder_user', '');
       await FamilyDemoStore().write('applied', []);
       return;
     }
+    await FamilyDemoStore().preferences.setString('paired_elder_user', user!);
     final data = await snapshot(matches.single['owner_id'] as String);
     if (data == null) {
       await FamilyDemoStore().write('applied', []);

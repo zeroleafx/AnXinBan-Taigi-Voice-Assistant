@@ -28,7 +28,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('長輩'));
     await tester.pumpAndSettle();
-    expect(find.text('我是長輩，開始使用'), findsOneWidget);
+    expect(find.text('與家人配對'), findsOneWidget);
+    expect(find.text('使用 Google 登入'), findsNothing);
     expect(find.text('我是家人，管理設定'), findsNothing);
     expect(tester.takeException(), isNull);
   });
