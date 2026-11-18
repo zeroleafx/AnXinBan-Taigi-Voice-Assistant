@@ -12,9 +12,11 @@ import 'package:an_xin_ban/main.dart';
 import 'package:an_xin_ban/place.dart';
 import 'package:an_xin_ban/recording_controller.dart';
 import 'package:an_xin_ban/speech_model.dart';
+import 'package:an_xin_ban/taigi_voice.dart';
 import 'package:an_xin_ban/voice_command.dart';
 
 import 'support/fake_phone.dart';
+import 'support/fake_voice.dart';
 
 const daughter = ContactEntry(name: '女兒', numbers: ['0911-111-111']);
 
@@ -105,7 +107,12 @@ void main() {
     model?.dispose();
   });
 
-  Future<void> open(WidgetTester tester, Size size, {double text = 1}) async {
+  Future<void> open(
+    WidgetTester tester,
+    Size size, {
+    double text = 1,
+    TaigiVoice? voice,
+  }) async {
     tester.view.physicalSize = size * 3;
     tester.view.devicePixelRatio = 3;
     tester.platformDispatcher.textScaleFactorTestValue = text;
@@ -117,6 +124,7 @@ void main() {
           recording: recording,
           assistant: assistant,
           model: model,
+          voice: voice,
         ),
       ),
     );
@@ -428,5 +436,122 @@ void main() {
     expect(find.text('手電筒開了'), findsNothing);
     expect(find.text('手電筒關了'), findsOneWidget);
     expect(find.text('關掉手電筒'), findsNothing);
+  });
+
+  group('the Taiwanese voice download', () {
+    late FakeSynthesizer synthesizer;
+    late FakePlayer player;
+    late TaigiVoice voice;
+
+    setUp(() {
+      synthesizer = FakeSynthesizer()..installed = false;
+      player = FakePlayer();
+      voice = TaigiVoice(assistant, synthesizer, player);
+    });
+    // Runs before the outer tearDown disposes the assistant.
+    tearDown(() => voice.dispose());
+
+    /// Lets async work finish and cards change: the card switch starts on
+    /// the frame after the voice reports, then fades for 250 ms.
+    Future<void> settle(WidgetTester tester) async {
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    Future<void> openOn(
+      WidgetTester tester,
+      ModelNetwork network, {
+      bool speechModel = true,
+    }) async {
+      model = SpeechModelController(ModelStore(network)..ready = speechModel);
+      await open(tester, const Size(393, 852), voice: voice);
+      await settle(tester);
+    }
+
+    testWidgets('on mobile data its card asks, then shows the progress', (
+      tester,
+    ) async {
+      await openOn(tester, ModelNetwork.metered);
+      expect(find.text('下載台語語音'), findsOneWidget);
+      expect(find.text('114 MB，現在不是 Wi-Fi'), findsOneWidget);
+      expect(synthesizer.installed, isFalse);
+
+      synthesizer.downloadGate = Completer<void>();
+      await tester.tap(find.text('用行動數據下載'));
+      await settle(tester);
+      expect(find.text('下載台語語音'), findsNothing);
+      expect(find.text('台語語音下載中 42%'), findsOneWidget);
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      expect(synthesizer.mobileDataAllowed, isTrue);
+
+      synthesizer.downloadGate!.complete();
+      await settle(tester);
+      expect(find.text('台語語音下載中 42%'), findsNothing);
+      expect(synthesizer.installed, isTrue);
+      expect(find.byType(HintsCard), findsOneWidget);
+    });
+
+    testWidgets('its card also shows beside the speech model download', (
+      tester,
+    ) async {
+      await openOn(tester, ModelNetwork.metered, speechModel: false);
+      expect(find.text('先下載語音模型'), findsOneWidget);
+      expect(find.text('下載台語語音'), findsOneWidget);
+    });
+
+    testWidgets('"not now" is not asked again until the next launch', (
+      tester,
+    ) async {
+      await openOn(tester, ModelNetwork.metered);
+      await tester.tap(find.text('先不要'));
+      await settle(tester);
+      expect(find.text('下載台語語音'), findsNothing);
+
+      // Coming back to the app checks the models again.
+      await model!.refresh();
+      await settle(tester);
+      expect(find.text('下載台語語音'), findsNothing);
+      expect(synthesizer.mobileDataAllowed, isFalse);
+      expect(synthesizer.installed, isFalse);
+    });
+
+    testWidgets('on Wi-Fi it downloads without asking, showing progress', (
+      tester,
+    ) async {
+      synthesizer.downloadGate = Completer<void>();
+      await openOn(tester, ModelNetwork.unmetered);
+      expect(find.text('下載台語語音'), findsNothing);
+      expect(find.text('台語語音下載中 42%'), findsOneWidget);
+
+      synthesizer.downloadGate!.complete();
+      await settle(tester);
+      expect(find.text('台語語音下載中 42%'), findsNothing);
+      expect(synthesizer.installed, isTrue);
+    });
+
+    testWidgets('a recording that was not understood is read aloud', (
+      tester,
+    ) async {
+      synthesizer.installed = true;
+      await openOn(tester, ModelNetwork.unmetered);
+      await say(tester, '');
+      await settle(tester);
+      expect(find.text('沒有聽清楚'), findsOneWidget);
+      expect(player.played, ['Bô lio̍k tio̍h lí ê ōe koh kóng chi̍t pái']);
+
+      // Starting the next recording silences the voice.
+      await tester.tap(find.bySemanticsLabel('開始錄音'));
+      await tester.pump();
+      expect(player.events.last, 'stop');
+      await tester.tap(find.bySemanticsLabel('停止錄音'));
+      await settle(tester);
+    });
+
+    testWidgets('with no connection it waits quietly', (tester) async {
+      await openOn(tester, ModelNetwork.none);
+      expect(find.text('下載台語語音'), findsNothing);
+      expect(synthesizer.installed, isFalse);
+    });
   });
 }

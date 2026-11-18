@@ -14,14 +14,27 @@ import 'web_transcription.dart';
 import 'phone_actions.dart';
 import 'recording_controller.dart';
 import 'speech_model.dart';
+import 'taigi_phrases.dart';
+import 'taigi_tts_stub.dart' if (dart.library.io) 'taigi_tts_native.dart';
+import 'taigi_voice.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, this.recording, this.assistant, this.model});
+  const HomePage({
+    super.key,
+    this.recording,
+    this.assistant,
+    this.model,
+    this.voice,
+  });
 
   /// Injected by tests and previews; the device versions are used otherwise.
   final RecordingController? recording;
   final AssistantController? assistant;
   final SpeechModelController? model;
+
+  /// Reads cards aloud. Without it, the device voice is used only when
+  /// [assistant] is not injected.
+  final TaigiVoice? voice;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -32,6 +45,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   late final RecordingController _recording;
   late final AssistantController _assistant;
   late final SpeechModelController _model;
+
+  /// Reads each card aloud in Taiwanese; null in tests and where unsupported.
+  TaigiVoice? _voice;
+
+  /// "先不要" on mobile data hides the voice card until the next launch.
+  bool _voiceDeclined = false;
   bool _deferred = false;
 
   @override
@@ -43,12 +62,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           DevicePhoneActions(),
           store: DeviceEmergencyStore(),
         );
-    if (widget.assistant == null) unawaited(_assistant.initialize());
+    _voice = widget.voice;
+    if (widget.assistant == null) {
+      unawaited(_assistant.initialize());
+      final synthesizer = _voice == null ? createTaigiSynthesizer() : null;
+      final player = _voice == null ? createVoicePlayer() : null;
+      if (synthesizer != null && player != null) {
+        _voice = TaigiVoice(_assistant, synthesizer, player);
+      }
+    }
     _recording = widget.recording ?? _deviceRecording();
     _model = widget.model ?? SpeechModelController(_breeze);
     _recording.onTranscript = _onTranscript;
     _recording.addListener(_refresh);
+    _recording.addListener(_recordingChanged);
     _assistant.addListener(_refresh);
+    _voice?.addListener(_refresh);
     _model.addListener(_modelChanged);
     unawaited(_model.refresh());
     WidgetsBinding.instance.addObserver(this);
@@ -77,7 +106,25 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ? _breeze!.transcribe
           : null;
     }
+    unawaited(_prepareVoice());
     _refresh();
+  }
+
+  ModelNetwork get _network => _model.status?.network ?? ModelNetwork.none;
+
+  /// The voice (114 MB) does not wait for the speech model, so the SOS card
+  /// is read aloud too. On Wi-Fi it downloads by itself; on mobile data its
+  /// card asks first. With an unknown network it is only loaded if on the
+  /// phone.
+  Future<void> _prepareVoice() async {
+    await _voice?.prepare(_network);
+  }
+
+  void _downloadVoiceOnMobileData() {
+    final voice = _voice;
+    if (voice == null) return;
+    voice.allowMobileData();
+    unawaited(voice.prepare(_network));
   }
 
   void _refresh() {
@@ -103,9 +150,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _recording.removeListener(_refresh);
+    _recording.removeListener(_recordingChanged);
     _assistant.removeListener(_refresh);
     _model.removeListener(_modelChanged);
     _recording.onTranscript = null;
+    _voice?.removeListener(_refresh);
+    if (widget.voice == null) _voice?.dispose();
     if (widget.recording == null) _recording.dispose();
     if (widget.assistant == null) _assistant.dispose();
     if (widget.model == null) _model.dispose();
@@ -144,8 +194,28 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (!_recording.isRecording) {
       _helpAsked = false;
       _assistant.clear();
+      // The voice must not end up in the recording.
+      _voice?.stop();
     }
     unawaited(_recording.toggle());
+  }
+
+  /// What the voice last said for the recording's own cards.
+  String? _recordingSaid;
+
+  /// Reads "沒有聽清楚" and the other recording cards aloud, once each.
+  void _recordingChanged() {
+    final recording = _recording;
+    final words = recording.isRecording || recording.recognizing
+        ? null
+        : taigiRecordingSpeech(
+            micDenied: recording.micDenied,
+            error: recording.error,
+            speechError: recording.speechError,
+          );
+    if (words == _recordingSaid) return;
+    _recordingSaid = words;
+    if (words != null) _voice?.say(words);
   }
 
   (String, String) get _headline {
@@ -187,6 +257,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 _modelPanel(),
+                                // The voice can download before the speech
+                                // model, so its card shows here too.
+                                if (_voicePanel() case final voice?) ...[
+                                  const SizedBox(height: 12),
+                                  voice,
+                                ],
                                 if (_model.phase != ModelPhase.downloading)
                                   TextButton(
                                     onPressed: () =>
@@ -389,6 +465,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         ],
       );
     }
+    if (_voicePanel() case final card?) return card;
     // The light stays on after its card is gone, so its off button stays too.
     if (_assistant.torchOn) {
       return ResultCard(
@@ -471,6 +548,48 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ],
         );
     }
+  }
+
+  /// Asks before the voice is downloaded on mobile data, then shows its
+  /// progress, in the same card as the speech model download.
+  Widget? _voicePanel() {
+    final voice = _voice;
+    if (voice == null) return null;
+    final size = voice.downloadSize;
+    if (voice.downloadPercent case final percent?) {
+      final checking = percent >= 100;
+      return ResultCard(
+        key: const ValueKey('voice-downloading'),
+        tone: OutcomeTone.info,
+        icon: Icons.record_voice_over_rounded,
+        title: checking ? '台語語音準備中' : '台語語音下載中 $percent%',
+        detail: checking ? '快好了' : '$size，只要下載一次',
+        children: [_DownloadBar(value: checking ? null : percent / 100)],
+      );
+    }
+    if (voice.setup == VoiceSetup.askMobileData && !_voiceDeclined) {
+      return ResultCard(
+        key: const ValueKey('voice-ask'),
+        tone: OutcomeTone.problem,
+        icon: Icons.record_voice_over_rounded,
+        title: '下載台語語音',
+        detail: '$size，現在不是 Wi-Fi',
+        children: [
+          _CardButton(
+            icon: Icons.download_rounded,
+            label: '用行動數據下載',
+            onPressed: _downloadVoiceOnMobileData,
+          ),
+          _CardButton(
+            icon: Icons.close_rounded,
+            label: '先不要',
+            kind: ButtonKind.quiet,
+            onPressed: () => setState(() => _voiceDeclined = true),
+          ),
+        ],
+      );
+    }
+    return null;
   }
 
   /// Cards that did not come from speech have nothing to replay.
