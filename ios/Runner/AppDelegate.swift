@@ -2,9 +2,16 @@ import AVFoundation
 import Flutter
 import UIKit
 import Network
+import AuthenticationServices
 
 @main
-@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate, ASWebAuthenticationPresentationContextProviding {
+  private var authSession: ASWebAuthenticationSession?
+  private var authWindow: UIWindow?
+
+  func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+    return authWindow!
+  }
   private let recognizer = BreezeRecognizer()
   private var torchWatch: NSKeyValueObservation?
   private var torchDeactivating: NSObjectProtocol?
@@ -24,6 +31,47 @@ import Network
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     guard let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BreezeSpeech") else { return }
+    let authChannel = FlutterMethodChannel(name: "anxinban/auth", binaryMessenger: registrar.messenger())
+    authChannel.setMethodCallHandler { [weak self] call, reply in
+      guard call.method == "signIn" else { reply(FlutterMethodNotImplemented); return }
+      guard let self else { return }
+      guard self.authSession == nil else {
+        reply(FlutterError(code: "auth_busy", message: "登入正在進行中", details: nil)); return
+      }
+      guard let args = call.arguments as? [String: Any],
+            let raw = args["url"] as? String, let url = URL(string: raw),
+            url.scheme == "https",
+            url.host == "ewiszwajtzaamswjoosb.supabase.co",
+            let window = UIApplication.shared.connectedScenes
+              .compactMap({ $0 as? UIWindowScene })
+              .filter({ $0.activationState == .foregroundActive })
+              .flatMap({ $0.windows }).first(where: { $0.isKeyWindow }) else {
+        reply(FlutterError(code: "auth_unavailable", message: "無法開啟登入視窗", details: nil)); return
+      }
+      self.authWindow = window
+      let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "com.anxinban.app") { [weak self] callback, error in
+        DispatchQueue.main.async {
+          self?.authSession = nil
+          self?.authWindow = nil
+          if let error = error as? ASWebAuthenticationSessionError, error.code == .canceledLogin {
+            reply(nil)
+          } else if error != nil {
+            reply(FlutterError(code: "auth_failed", message: "登入未完成，請再試一次", details: nil))
+          } else if let callback, callback.host == "login-callback" {
+            reply(callback.absoluteString)
+          } else {
+            reply(FlutterError(code: "auth_callback", message: "登入回傳網址不正確", details: nil))
+          }
+        }
+      }
+      session.presentationContextProvider = self
+      self.authSession = session
+      if !session.start() {
+        self.authSession = nil
+        self.authWindow = nil
+        reply(FlutterError(code: "auth_start", message: "無法開始登入", details: nil))
+      }
+    }
     registerTorch(registrar.messenger())
     let channel = FlutterMethodChannel(name: "anxinban/breeze", binaryMessenger: registrar.messenger())
     channel.setMethodCallHandler { call, reply in

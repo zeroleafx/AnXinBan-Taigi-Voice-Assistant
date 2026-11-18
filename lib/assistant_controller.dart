@@ -76,6 +76,8 @@ class AssistantController extends ChangeNotifier {
 
   /// Who is called first in an emergency.
   ContactEntry? emergencyContact;
+  List<ContactEntry> familyContacts = [];
+  Map<String, String> familyPlaces = {};
   bool working = false;
 
   /// Whether this app last switched the flashlight on, so it can still be
@@ -211,6 +213,10 @@ class AssistantController extends ChangeNotifier {
     VoiceCommand command, {
     bool confirmed = false,
   }) async {
+    if (command case NavigateCommand(:final place)) {
+      final address = familyPlaces[normalizeTranscript(place)];
+      if (address != null) command = NavigateCommand(address);
+    }
     if (!confirmed) {
       final prompt = switch (command) {
         OpenAppCommand(:final app) => ('要開啟 ${app.label} 嗎？', app.label),
@@ -338,6 +344,18 @@ class AssistantController extends ChangeNotifier {
     String question,
     Future<AssistantOutcome?> Function(ContactEntry contact) then,
   ) async {
+    final saved = matchContacts(name, familyContacts, limit: 3);
+    if (saved.length == 1) return then(saved.single);
+    if (saved.length > 1) {
+      return AssistantOutcome(
+        tone: OutcomeTone.info,
+        icon: Icons.people_alt_rounded,
+        title: question,
+        heard: _heard,
+        choices: saved,
+        onChoice: then,
+      );
+    }
     final access = await actions.loadContacts();
     if (!access.granted) {
       return AssistantOutcome(

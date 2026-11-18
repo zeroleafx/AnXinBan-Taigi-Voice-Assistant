@@ -2,6 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>FlutterDeepLinkingEnabled</key>
+	<false/>
+	<key>CFBundleURLTypes</key><array><dict><key>CFBundleURLSchemes</key><array><string>com.anxinban.app</string></array></dict></array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>安心BAN需要使用麥克風錄下您的台語語音，錄音只儲存在此裝置。</string>
 	<key>NSContactsUsageDescription</key>
