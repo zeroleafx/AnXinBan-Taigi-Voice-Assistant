@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
@@ -14,16 +13,12 @@ abstract class RecordingBackend {
   Future<void> start();
   Future<String?> stop();
   Future<void> cancel();
-  Future<void> play(String path);
-  Future<void> stopPlayback();
-  Stream<void> get playbackCompleted;
   Stream<RecordState> get states;
   Future<void> dispose();
 }
 
 class DeviceRecordingBackend implements RecordingBackend {
   final _recorder = AudioRecorder();
-  final _player = AudioPlayer();
   final _storage = RecordingStorage();
 
   @override
@@ -55,18 +50,10 @@ class DeviceRecordingBackend implements RecordingBackend {
   @override
   Future<void> cancel() => _recorder.cancel();
   @override
-  Future<void> play(String path) =>
-      _player.play(kIsWeb ? UrlSource(path) : DeviceFileSource(path));
-  @override
-  Future<void> stopPlayback() => _player.stop();
-  @override
-  Stream<void> get playbackCompleted => _player.onPlayerComplete;
-  @override
   Stream<RecordState> get states => _recorder.onStateChanged();
   @override
   Future<void> dispose() async {
     await _recorder.dispose();
-    await _player.dispose();
   }
 }
 
@@ -76,10 +63,6 @@ class RecordingController extends ChangeNotifier {
     this.transcribe,
     this.autoTranscribe = true,
   }) {
-    _playbackSubscription = backend.playbackCompleted.listen((_) {
-      isPlaying = false;
-      _notify();
-    });
     _stateSubscription = backend.states.listen((state) {
       // End and save a session interrupted by a call or audio-route change.
       if (state != RecordState.record && isRecording && !busy) {
@@ -121,7 +104,7 @@ class RecordingController extends ChangeNotifier {
 
   Future<void> recognizeLatest() async {
     final path = lastPath;
-    if (busy || isPlaying || isRecording || path == null || _disposed) return;
+    if (busy || isRecording || path == null || _disposed) return;
     busy = true;
     try {
       await _recognize(path);
@@ -145,7 +128,6 @@ class RecordingController extends ChangeNotifier {
   }
 
   bool isRecording = false;
-  bool isPlaying = false;
   bool busy = false;
 
   /// True after the microphone permission was refused.
@@ -159,7 +141,6 @@ class RecordingController extends ChangeNotifier {
   Timer? _timer;
   Timer? _limitTimer;
   static const maxDuration = Duration(minutes: 1);
-  late final StreamSubscription<void> _playbackSubscription;
   late final StreamSubscription<RecordState> _stateSubscription;
 
   String get durationLabel {
@@ -182,8 +163,6 @@ class RecordingController extends ChangeNotifier {
     micDenied = false;
     _notify();
     try {
-      await backend.stopPlayback();
-      isPlaying = false;
       if (!await backend.hasPermission()) {
         micDenied = true;
         error = '需要麥克風權限，請到設定打開。';
@@ -266,28 +245,6 @@ class RecordingController extends ChangeNotifier {
     _notify();
   }
 
-  Future<void> togglePlayback() async {
-    if (busy || isRecording || lastPath == null || _disposed) return;
-    busy = true;
-    error = null;
-    _notify();
-    try {
-      if (isPlaying) {
-        await backend.stopPlayback();
-        isPlaying = false;
-      } else {
-        await backend.play(lastPath!);
-        isPlaying = true;
-      }
-    } catch (_) {
-      isPlaying = false;
-      error = '無法播放這段錄音，請再試一次。';
-    } finally {
-      busy = false;
-      _notify();
-    }
-  }
-
   Future<void> _cancelSafely() async {
     try {
       await backend.cancel();
@@ -300,13 +257,6 @@ class RecordingController extends ChangeNotifier {
     _foreground = foreground;
     if (!foreground) {
       await stop();
-      try {
-        await backend.stopPlayback();
-      } catch (_) {
-        error = '無法停止播放，請關閉 App 後重試。';
-      }
-      isPlaying = false;
-      _notify();
     }
   }
 
@@ -316,7 +266,6 @@ class RecordingController extends ChangeNotifier {
     _limitTimer?.cancel();
     _timer?.cancel();
     _watch.stop();
-    unawaited(_playbackSubscription.cancel());
     unawaited(_stateSubscription.cancel());
     unawaited(backend.dispose());
     super.dispose();

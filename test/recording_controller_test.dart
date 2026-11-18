@@ -21,12 +21,8 @@ class FakeBackend implements RecordingBackend {
   int starts = 0;
   int stops = 0;
   int cancellations = 0;
-  String? played;
   Completer<bool>? permissionGate;
-  final completed = StreamController<void>.broadcast();
   final events = StreamController<RecordState>.broadcast();
-  @override
-  Stream<void> get playbackCompleted => completed.stream;
   @override
   Stream<RecordState> get states => events.stream;
   @override
@@ -51,15 +47,7 @@ class FakeBackend implements RecordingBackend {
   }
 
   @override
-  Future<void> play(String path) async {
-    played = path;
-  }
-
-  @override
-  Future<void> stopPlayback() async {}
-  @override
   Future<void> dispose() async {
-    await completed.close();
     await events.close();
   }
 }
@@ -90,19 +78,13 @@ void main() {
     expect(controller.busy, false);
     expect(controller.error, contains('麥克風'));
   });
-  test('record, save, and replay uses the saved path', () async {
+  test('record and save retains the latest path', () async {
     await controller.toggle();
     expect(controller.isRecording, true);
     await controller.toggle();
     expect(controller.isRecording, false);
     expect(controller.lastPath, '/local/recording.m4a');
     expect(backend.retained, controller.lastPath);
-    await controller.togglePlayback();
-    expect(backend.played, controller.lastPath);
-    expect(controller.isPlaying, true);
-    backend.completed.add(null);
-    await Future<void>.delayed(Duration.zero);
-    expect(controller.isPlaying, false);
   });
   test('rapid taps do not start overlapping recording sessions', () async {
     backend.permissionGate = Completer<bool>();
