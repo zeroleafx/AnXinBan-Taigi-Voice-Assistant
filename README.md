@@ -56,6 +56,27 @@ commands above asks for it (`NSLocationWhenInUseUsageDescription` on iOS,
 `ACCESS_FINE_LOCATION` and `ACCESS_COARSE_LOCATION` on Android); the phone's
 own geocoder turns it into an address.
 
+## Spoken replies in Taiwanese
+
+On Android and iOS, enabling 「開啟語音模式」 reads new cards aloud in Taiwanese, including
+「沒有聽清楚」 and the other recording cards. The voice is Meta MMS-TTS Min Nan
+([facebook/mms-tts-nan](https://huggingface.co/facebook/mms-tts-nan),
+**CC-BY-NC-4.0: not for commercial use**), run on the phone with
+[sherpa-onnx](https://pub.dev/packages/sherpa_onnx) on a background isolate.
+
+- It reads Pe̍h-ōe-jī only, so every reply is written in POJ in
+  `lib/taigi_phrases.dart`, as complete sentences and avoiding nasal vowels,
+  whose ⁿ the model drops. Times and dates are read; names, numbers and
+  addresses stay on the card. A test fails if a card has no Taiwanese words.
+- If the 114 MB ONNX model is missing, the app asks before downloading it on
+  Wi-Fi or mobile data. The voice can read the SOS card before the speech
+  recognition model is installed.
+- 「關閉語音模式」 stops playback and keeps the downloaded model for next time.
+  The model is stored beside the recognition model, outside iCloud and Android
+  backups. Playback also stops when recording starts.
+- To debug, filter the run log for `TaigiVoice`: download progress, `ready`,
+  `saying "…"`, or `no Taiwanese for "<card title>"`.
+
 ## Speech model download (Android)
 
 When the Android build offers the `modelStatus` and `downloadModel` channel
@@ -67,8 +88,8 @@ transcription.
 On iOS/Android, recordings are saved as mono AAC .m4a files in the app documents
 directory. Only the latest recording is retained: after a new recording saves,
 previous recordings are deleted. Startup also removes older app recordings and
-restores the latest clip for playback. Going to the background stops recording.
-Mobile recognition runs on-device. On web, recording and playback stay local until the user selects the upload button.
+restores the latest recorded clip. Going to the background stops recording.
+Mobile recognition runs on-device. On web, recordings stay local until the user selects the upload button.
 On iOS 16.4 or later, stopping a recording runs Breeze-ASR-26 GGML Q5 with whisper.cpp locally and shows its
 Chinese transcript. A restored recording can also be transcribed manually.
 The iOS build prepares the whisper.cpp runtime. On both iOS and Android,
@@ -101,4 +122,4 @@ Use its HTTPS app URL when building the Flutter web app:
 flutter build web --dart-define=BREEZE_SPACE_URL=https://YOUR-SPACE.hf.space
 ```
 
-With no URL configured, web remains recording/playback only.
+With no URL configured, web remains recording only.
