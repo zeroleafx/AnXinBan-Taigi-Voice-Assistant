@@ -89,6 +89,10 @@ void main() {
   test('prepare passes the network on and reports where it got to', () async {
     synthesizer.installed = false;
     expect(await voice.prepare(ModelNetwork.none), VoiceSetup.needsDownload);
+    expect(
+      await voice.prepare(ModelNetwork.unmetered),
+      VoiceSetup.needsDownload,
+    );
     expect(await voice.prepare(ModelNetwork.metered), VoiceSetup.needsDownload);
     expect(synthesizer.downloadAttempts, 0);
     expect(
@@ -97,6 +101,7 @@ void main() {
     );
     expect(synthesizer.prepared, [
       ModelNetwork.none,
+      ModelNetwork.unmetered,
       ModelNetwork.metered,
       ModelNetwork.metered,
     ]);
