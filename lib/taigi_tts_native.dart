@@ -4,6 +4,7 @@ import 'dart:isolate';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
@@ -32,13 +33,51 @@ const _files = [
 /// 1.0 is the model's own pace; below 1 is slower (0.85 was tried).
 const _speed = 1.0;
 
-/// Android only for now: iOS shares its audio session with the recorder's
-/// Bluetooth routing, which has not been tried with a second player.
-TaigiSynthesizer? createTaigiSynthesizer() =>
-    Platform.isAndroid ? DeviceTaigiSynthesizer() : null;
+bool get _supported => Platform.isAndroid || Platform.isIOS;
 
-VoicePlayer? createVoicePlayer() =>
-    Platform.isAndroid ? DeviceVoicePlayer() : null;
+TaigiSynthesizer? createTaigiSynthesizer() =>
+    _supported ? DeviceTaigiSynthesizer() : null;
+
+VoicePlayer? createVoicePlayer() => _supported ? DeviceVoicePlayer() : null;
+
+/// The voice sits next to the speech model, in a folder that is not backed
+/// up: on iOS, Application Support/Breeze is excluded from iCloud backup; on
+/// Android, the app's external files folder is outside Auto Backup, whose
+/// 25 MB limit 114 MB would exceed (stopping backup of the whole app).
+Future<Directory> _voiceFolder() async {
+  if (Platform.isIOS) {
+    final model = await const MethodChannel('anxinban/breeze')
+        .invokeMethod<String>('modelPath');
+    return Directory('${File(model!).parent.path}/taigi_tts');
+  }
+  final external = await getExternalStorageDirectory();
+  final folder = Directory(
+    '${(external ?? await getApplicationSupportDirectory()).path}/taigi_tts',
+  );
+  await _moveFromFirstVersion(folder);
+  return folder;
+}
+
+/// The first Android build kept the voice in the backed-up support folder.
+/// Moves a complete download from there, so it is not fetched again.
+Future<void> _moveFromFirstVersion(Directory folder) async {
+  final old = Directory(
+    '${(await getApplicationSupportDirectory()).path}/taigi_tts',
+  );
+  if (old.path == folder.path || !await old.exists()) return;
+  await folder.create(recursive: true);
+  for (final file in _files) {
+    final from = File('${old.path}/${file.name}');
+    final to = File('${folder.path}/${file.name}');
+    if (await to.exists() && await to.length() == file.bytes) continue;
+    if (await from.exists() && await from.length() == file.bytes) {
+      // Different storage, so copy rather than rename.
+      await from.copy('${to.path}.part');
+      await File('${to.path}.part').rename(to.path);
+    }
+  }
+  await old.delete(recursive: true);
+}
 
 /// Downloads the voice (114 MB) on Wi-Fi, or on mobile data once allowed,
 /// then runs it on a background isolate so the screen does not stall while
@@ -77,8 +116,7 @@ class DeviceTaigiSynthesizer implements TaigiSynthesizer {
   ) async {
     if (_disposed) return VoiceSetup.waiting;
     try {
-      final support = await getApplicationSupportDirectory();
-      final folder = Directory('${support.path}/taigi_tts');
+      final folder = await _voiceFolder();
       await folder.create(recursive: true);
       for (final file in _files) {
         final path = '${folder.path}/${file.name}';
@@ -138,7 +176,7 @@ class DeviceTaigiSynthesizer implements TaigiSynthesizer {
     return worker.synthesize(words);
   }
 
-  /// Shown in the Android Studio Run/Debug tab; each message once in a row.
+  /// Shown in the Android Studio or Xcode run log; each message once in a row.
   void _log(String message) {
     if (message == _lastLog) return;
     _lastLog = message;
@@ -153,12 +191,28 @@ class DeviceTaigiSynthesizer implements TaigiSynthesizer {
   }
 }
 
+/// Plays with the same default audio settings as the recording's playback,
+/// so it shares the audio session the way that does.
 class DeviceVoicePlayer implements VoicePlayer {
   final _player = AudioPlayer();
 
+  /// iOS plays files only; two names take turns, so the file being stopped
+  /// is not the one being written.
+  int _file = 0;
+
   @override
-  Future<void> play(Uint8List wav) =>
-      _player.play(BytesSource(wav, mimeType: 'audio/wav'));
+  Future<void> play(Uint8List wav) async {
+    if (!Platform.isIOS) {
+      return _player.play(BytesSource(wav, mimeType: 'audio/wav'));
+    }
+    // audioplayers would write the bytes to a file without an extension;
+    // AVPlayer recognises the format by ".wav".
+    final folder = await getTemporaryDirectory();
+    _file = 1 - _file;
+    final file = File('${folder.path}/taigi_voice_$_file.wav');
+    await file.writeAsBytes(wav, flush: true);
+    await _player.play(DeviceFileSource(file.path, mimeType: 'audio/wav'));
+  }
 
   @override
   Future<void> stop() => _player.stop();

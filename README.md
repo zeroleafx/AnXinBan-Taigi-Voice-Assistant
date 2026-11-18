@@ -56,6 +56,26 @@ commands above asks for it (`NSLocationWhenInUseUsageDescription` on iOS,
 `ACCESS_FINE_LOCATION` and `ACCESS_COARSE_LOCATION` on Android); the phone's
 own geocoder turns it into an address.
 
+## Spoken replies in Taiwanese
+
+On Android and iOS each new card is also read aloud in Taiwanese, as are
+「沒有聽清楚」 and the other recording cards. The voice is Meta MMS-TTS Min Nan
+([facebook/mms-tts-nan](https://huggingface.co/facebook/mms-tts-nan),
+**CC-BY-NC-4.0: not for commercial use**), run on the phone with
+[sherpa-onnx](https://pub.dev/packages/sherpa_onnx) on a background isolate.
+
+- It reads Pe̍h-ōe-jī only, so every reply is written in POJ in
+  `lib/taigi_phrases.dart`, as complete sentences and avoiding nasal vowels,
+  whose ⁿ the model drops. Times and dates are read; names, numbers and
+  addresses stay on the card. A test fails if a card has no Taiwanese words.
+- The 114 MB ONNX model downloads by itself on Wi-Fi; on mobile data a card
+  asks first and then shows progress. It does not wait for the speech model,
+  so the SOS card is read too. It is kept next to the speech model, outside
+  iCloud and Android backups.
+- Speech stops when recording starts.
+- To debug, filter the run log for `TaigiVoice`: download progress, `ready`,
+  `saying "…"`, or `no Taiwanese for "<card title>"`.
+
 ## Speech model download (Android)
 
 When the Android build offers the `modelStatus` and `downloadModel` channel
