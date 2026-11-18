@@ -269,7 +269,9 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && mounted && FamilyCloud.available) {
+    if (state == AppLifecycleState.resumed &&
+        mounted &&
+        FamilyCloud.available) {
       unawaited(_refreshAfterLogin());
     }
     // iOS can become inactive for system overlays without leaving the app.
