@@ -15,24 +15,51 @@ import 'family_demo_store.dart';
 import 'home_page.dart';
 import 'voice_command.dart';
 
-void showFamilyFeedback(BuildContext context, String text) {
+void showFamilyFeedback(
+  BuildContext context,
+  String text, {
+  bool liftButton = false,
+}) {
+  final message = Text(
+    text,
+    style: Theme.of(context).textTheme.bodyMedium
+        ?.copyWith(color: AppColors.ink, fontWeight: FontWeight.w600),
+  );
+  final shape = RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(24),
+    side: const BorderSide(color: AppColors.mutedTeal),
+  );
+  // Reserve space through Scaffold so the add button follows the animation.
+  // Only the inset card paints a surface.
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(
       SnackBar(
-        content: Text(
-          text,
-          style: Theme.of(context).textTheme.bodyMedium
-              ?.copyWith(color: AppColors.ink, fontWeight: FontWeight.w600),
-        ),
-        backgroundColor: AppColors.card,
-        elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-          side: const BorderSide(color: AppColors.mutedTeal),
-        ),
-        margin: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-        behavior: SnackBarBehavior.floating,
+        content: liftButton
+            ? Padding(
+                padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
+                child: Material(
+                  color: AppColors.card,
+                  elevation: 2,
+                  shape: shape,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 14,
+                    ),
+                    child: message,
+                  ),
+                ),
+              )
+            : message,
+        padding: liftButton ? EdgeInsets.zero : null,
+        backgroundColor: liftButton ? Colors.transparent : AppColors.card,
+        elevation: liftButton ? 0 : 2,
+        shape: liftButton ? const RoundedRectangleBorder() : shape,
+        margin: liftButton ? null : const EdgeInsets.fromLTRB(24, 0, 24, 16),
+        behavior: liftButton
+            ? SnackBarBehavior.fixed
+            : SnackBarBehavior.floating,
         duration: Duration(seconds: text.length > 30 ? 6 : 3),
       ),
     );
@@ -218,7 +245,9 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
   set message(String? value) {
     if (value == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) showFamilyFeedback(context, value);
+      if (mounted) {
+        showFamilyFeedback(context, value, liftButton: widget.isFamily == true);
+      }
     });
   }
 

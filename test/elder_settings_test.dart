@@ -94,6 +94,29 @@ void main() {
       expect(await store.read('other', 'a'), isNotNull);
     },
   );
+  testWidgets('refresh feedback lifts the add button then restores it', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(),
+        home: FamilyDashboard(cloud: FakeFamilyCloud()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final add = find.byTooltip('新增長輩，產生配對碼');
+    final resting = tester.getBottomLeft(add).dy;
+    await tester.tap(find.byTooltip('重新整理'));
+    await tester.pumpAndSettle();
+    expect(tester.getBottomLeft(add).dy, lessThan(resting));
+    expect(
+      tester.getBottomLeft(add).dy,
+      lessThanOrEqualTo(tester.getTopLeft(find.byType(SnackBar)).dy),
+    );
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+    expect(tester.getBottomLeft(add).dy, resting);
+  });
   testWidgets('dashboard opens only the selected elder settings', (
     tester,
   ) async {
@@ -105,6 +128,16 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    final tile = find.ancestor(
+      of: find.text('阿公'),
+      matching: find.byType(ListTile),
+    );
+    final bounds = tester.getRect(tile);
+    expect(
+      bounds.width,
+      tester.getSize(find.byType(Scaffold).first).width - 40,
+    );
+    expect(bounds.height, greaterThanOrEqualTo(128));
     expect(find.text('阿公'), findsOneWidget);
     expect(find.text('阿嬤'), findsOneWidget);
     expect(find.text('設定已同步'), findsOneWidget);

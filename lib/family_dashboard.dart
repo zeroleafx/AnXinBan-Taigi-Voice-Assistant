@@ -51,10 +51,19 @@ class _FamilyDashboardState extends State<FamilyDashboard>
     if (state == AppLifecycleState.resumed) unawaited(refresh());
   }
 
-  bool refreshing = false;
-  Future<void> refresh() async {
-    if (refreshing || !cloud.hasFamilyAccount) return;
-    refreshing = true;
+  Future<void>? activeRefresh;
+  Future<void> refresh() =>
+      activeRefresh ??= loadLinks().whenComplete(() => activeRefresh = null);
+
+  Future<void> manualRefresh() async {
+    await refresh();
+    if (mounted && cloud.hasFamilyAccount) {
+      showFamilyFeedback(context, error ?? '長輩清單已更新', liftButton: true);
+    }
+  }
+
+  Future<void> loadLinks() async {
+    if (!cloud.hasFamilyAccount) return;
     final owner = cloud.user!;
     try {
       final result = await cloud.links().timeout(const Duration(seconds: 10));
@@ -76,7 +85,6 @@ class _FamilyDashboardState extends State<FamilyDashboard>
     } catch (_) {
       if (mounted) setState(() => error = '暫時無法讀取長輩清單，請稍後重試');
     } finally {
-      refreshing = false;
       if (mounted) setState(() => loading = false);
     }
   }
@@ -92,110 +100,197 @@ class _FamilyDashboardState extends State<FamilyDashboard>
       );
       await refresh();
     } catch (_) {
-      if (mounted) showFamilyFeedback(context, '無法產生配對碼，請稍後重試');
+      if (mounted) {
+        showFamilyFeedback(context, '無法產生配對碼，請稍後重試', liftButton: true);
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }
   }
 
+  Widget addButton() => IconButton.filled(
+    tooltip: '新增長輩，產生配對碼',
+    style: IconButton.styleFrom(
+      shape: const CircleBorder(),
+      minimumSize: const Size.square(68),
+    ),
+    icon: const Icon(Icons.add_rounded, size: 38),
+    onPressed: busy ? null : invite,
+  );
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Text('我的家人'),
+      title: const Text('安心BAN'),
       actions: [
         IconButton(
           tooltip: '重新整理',
-          onPressed: refresh,
+          onPressed: manualRefresh,
           icon: const Icon(Icons.refresh),
         ),
-        IconButton(
-          tooltip: '登出',
-          icon: const Icon(Icons.logout),
-          onPressed: busy
-              ? null
-              : () async {
-                  setState(() => busy = true);
-                  try {
-                    await drafts.prune(cloud.user!, {});
-                    await FamilyDemoStore().write('pending', []);
-                    await FamilyDemoStore().write('applied', []);
-                    await cloud.client.auth.signOut();
-                  } catch (_) {
-                    if (mounted) {
-                      showFamilyFeedback(this.context, '登出未完成，請再試一次');
-                    }
-                  } finally {
-                    if (mounted) setState(() => busy = false);
-                  }
-                },
+        PopupMenuButton<bool>(
+          tooltip: '更多操作',
+          enabled: !busy,
+          icon: const Icon(Icons.more_horiz_rounded),
+          position: PopupMenuPosition.under,
+          offset: const Offset(-8, 4),
+          color: AppColors.card,
+          surfaceTintColor: Colors.transparent,
+          elevation: 4,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+
+          itemBuilder: (_) => const [
+            PopupMenuItem(
+              value: false,
+              child: Row(
+                children: [
+                  Icon(Icons.switch_account_outlined, color: AppColors.ocean),
+                  SizedBox(width: 12),
+                  Text('返回身分選擇'),
+                ],
+              ),
+            ),
+            PopupMenuDivider(height: 1),
+            PopupMenuItem(
+              value: true,
+              child: Row(
+                children: [
+                  Icon(Icons.logout_rounded, color: AppColors.ink),
+                  SizedBox(width: 12),
+                  Text('登出家人帳號'),
+                ],
+              ),
+            ),
+          ],
+          onSelected: (logout) async {
+            if (!logout) {
+              await Navigator.of(context).maybePop();
+              return;
+            }
+            final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (_) => const ConfirmationDialog(
+                title: '登出家人帳號？',
+                description: '下次管理長輩設定時需要重新登入。',
+                icon: Icons.logout,
+              ),
+            );
+            if (confirmed != true || !mounted) return;
+            setState(() => busy = true);
+            try {
+              await drafts.prune(cloud.user!, {});
+              await FamilyDemoStore().write('pending', []);
+              await FamilyDemoStore().write('applied', []);
+              await cloud.client.auth.signOut();
+            } catch (_) {
+              if (mounted) {
+                showFamilyFeedback(
+                  this.context,
+                  '登出未完成，請再試一次',
+                  liftButton: true,
+                );
+              }
+            } finally {
+              if (mounted) setState(() => busy = false);
+            }
+          },
         ),
       ],
     ),
     floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-    floatingActionButton: FloatingActionButton.extended(
-      onPressed: busy ? null : invite,
-      icon: const Icon(Icons.add),
-      label: Text(busy ? '處理中…' : '新增長輩'),
-    ),
+    floatingActionButton: loading ? null : addButton(),
     body: loading
         ? const Center(child: CircularProgressIndicator())
         : RefreshIndicator(
-            onRefresh: refresh,
+            onRefresh: manualRefresh,
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 110),
+              padding: const EdgeInsets.fromLTRB(12, 20, 12, 110),
               physics: const AlwaysScrollableScrollPhysics(),
               children: [
-                const Text('選擇一位長輩，管理他的聯絡人與地址。'),
-                const SizedBox(height: 24),
+                const Text(
+                  '我的長輩',
+                  style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 20),
                 if (error != null) Text(error!),
                 if (links.isEmpty && error == null)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 64),
-                    child: Text(
-                      '還沒有連結的長輩\n點下方「新增長輩」開始配對',
-                      textAlign: TextAlign.center,
+                  Card(
+                    color: AppColors.celadon,
+                    elevation: 0,
+                    child: Padding(
+                      padding: const EdgeInsets.all(28),
+                      child: Column(
+                        children: [
+                          const Icon(
+                            Icons.diversity_1_outlined,
+                            size: 64,
+                            color: AppColors.leaf,
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            '新增第一位長輩',
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 for (final (index, link) in links.indexed)
                   Card(
                     color: AppColors.card,
-                    margin: const EdgeInsets.only(bottom: 16),
+                    margin: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+                    elevation: 3,
+                    shadowColor: AppColors.ink.withValues(alpha: 0.22),
+                    surfaceTintColor: Colors.transparent,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(14),
                     ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.all(20),
-                      leading: const CircleAvatar(
-                        backgroundColor: AppColors.celadon,
-                        child: Icon(Icons.person, color: AppColors.leaf),
-                      ),
-                      title: Text(
-                        elderName(link, index),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 22,
+                    clipBehavior: Clip.antiAlias,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 136),
+                      child: ListTile(
+                        minTileHeight: 136,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 24,
                         ),
-                      ),
-                      subtitle: Text(
-                        (versions[link['id']] ?? 0) == 0
-                            ? '尚未設定'
-                            : link['applied_revision'] == versions[link['id']]
-                            ? '設定已同步'
-                            : '等待同步',
-                      ),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () async {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => ElderSettingsPage(
-                              cloud: cloud,
-                              link: link,
-                              name: elderName(link, index),
-                            ),
+                        leading: const CircleAvatar(
+                          backgroundColor: AppColors.celadon,
+                          child: Icon(Icons.person, color: AppColors.leaf),
+                        ),
+                        title: Text(
+                          elderName(link, index),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 22,
                           ),
-                        );
-                        await refresh();
-                      },
+                        ),
+                        subtitle: Text(
+                          (versions[link['id']] ?? 0) == 0
+                              ? '尚未設定'
+                              : link['applied_revision'] == versions[link['id']]
+                              ? '設定已同步'
+                              : '等待同步',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => ElderSettingsPage(
+                                cloud: cloud,
+                                link: link,
+                                name: elderName(link, index),
+                              ),
+                            ),
+                          );
+                          await refresh();
+                        },
+                      ),
                     ),
                   ),
               ],
