@@ -32,9 +32,9 @@ class ConfirmationDialog extends StatelessWidget {
                 padding: const EdgeInsets.all(20),
                 decoration: const BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.cream,
+                  color: AppColors.celadon,
                 ),
-                child: Icon(icon, size: 44, color: AppColors.green),
+                child: Icon(icon, size: 44, color: AppColors.leaf),
               ),
             ),
             const SizedBox(height: 24),
@@ -65,7 +65,7 @@ class ConfirmationDialog extends StatelessWidget {
                   child: TextButton(
                     style: TextButton.styleFrom(
                       minimumSize: const Size(0, 54),
-                      foregroundColor: AppColors.green,
+                      foregroundColor: AppColors.leaf,
                     ),
                     onPressed: () => Navigator.pop(context, false),
                     child: const Text(
@@ -82,7 +82,7 @@ class ConfirmationDialog extends StatelessWidget {
                   child: FilledButton(
                     style: FilledButton.styleFrom(
                       minimumSize: const Size(0, 54),
-                      backgroundColor: AppColors.green,
+                      backgroundColor: AppColors.leaf,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),

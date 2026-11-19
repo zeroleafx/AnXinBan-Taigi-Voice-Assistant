@@ -28,12 +28,12 @@ class MicButton extends StatelessWidget {
     final halo = size * 1.22;
     final recording = state == MicState.recording;
     final busy = state == MicState.busy;
-    final accent = AppColors.freshGreen;
+    final accent = AppColors.mutedTeal;
     final colors = recording
         ? const [AppColors.coralLight, AppColors.coral]
         : busy
-        ? const [Color(0xFFA8CC94), Color(0xFF7BAA64)]
-        : const [AppColors.leaf, AppColors.green];
+        ? const [AppColors.celadon, AppColors.teal]
+        : const [AppColors.teal, AppColors.leaf];
     const duration = Duration(milliseconds: 300);
 
     return Semantics(
@@ -68,7 +68,7 @@ class MicButton extends StatelessWidget {
                   child: const CircularProgressIndicator(
                     strokeWidth: 4,
                     strokeCap: StrokeCap.round,
-                    color: AppColors.green,
+                    color: AppColors.leaf,
                   ),
                 ),
               AnimatedContainer(
@@ -167,7 +167,7 @@ class _MicLevelRingState extends State<_MicLevelRing> {
       height: diameter,
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
-        color: AppColors.freshGreen,
+        color: AppColors.mutedTeal,
       ),
     );
   }

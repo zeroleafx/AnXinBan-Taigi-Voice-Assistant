@@ -122,7 +122,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('聯絡人與綽號'), findsOneWidget);
     expect(find.text('常用地址'), findsOneWidget);
-    expect(find.text('阿嬤的家'), findsNothing);
+    expect(find.text('阿嬤的家'), findsOneWidget);
+    expect(find.text('阿公的家'), findsNothing);
     expect(find.text('模擬同步到長輩端'), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });

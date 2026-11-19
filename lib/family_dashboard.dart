@@ -166,8 +166,8 @@ class _FamilyDashboardState extends State<FamilyDashboard>
                     child: ListTile(
                       contentPadding: const EdgeInsets.all(20),
                       leading: const CircleAvatar(
-                        backgroundColor: AppColors.cream,
-                        child: Icon(Icons.person, color: AppColors.green),
+                        backgroundColor: AppColors.celadon,
+                        child: Icon(Icons.person, color: AppColors.leaf),
                       ),
                       title: Text(
                         elderName(link, index),
@@ -410,11 +410,11 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
     IconData icon,
     Future<void> Function() callback, {
     bool enabled = true,
-    bool destructive = false,
   }) => Expanded(
     child: TextButton(
       style: TextButton.styleFrom(
-        foregroundColor: destructive ? AppColors.coral : AppColors.green,
+        foregroundColor: Colors.white,
+        disabledForegroundColor: Colors.white60,
         padding: const EdgeInsets.symmetric(vertical: 12),
         minimumSize: const Size(48, 64),
       ),
@@ -432,43 +432,36 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
     ),
   );
 
-  Widget section(
-    String kind,
-    String title,
-    String description,
-    IconData icon,
-    Color color,
-  ) {
-    final count = entries.where((e) => e['kind'] == kind).length;
+  Widget section(String kind, String title, IconData icon, Color color) {
+    final items = entries.where((e) => e['kind'] == kind);
+    final preview = items.take(2).map((e) => e['label']).join('、');
+    final count = items.length;
     return Card(
-      color: color,
+      margin: EdgeInsets.zero,
+      color: Color.alphaBlend(color.withValues(alpha: .6), Colors.white),
       elevation: 0,
-      margin: const EdgeInsets.only(bottom: 18),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       clipBehavior: Clip.antiAlias,
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 22,
-          vertical: 20,
-        ),
-        leading: Icon(icon, color: AppColors.ink, size: 32),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            color: AppColors.ink,
-          ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Text(
-            '$description · $count 筆',
-            style: const TextStyle(color: AppColors.ink),
-          ),
-        ),
-        trailing: const Icon(Icons.chevron_right, color: AppColors.ink),
+      child: InkWell(
         onTap: busy ? null : () => setState(() => category = kind),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [Icon(icon), const Spacer(), Text('$count 筆')]),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              if (items.isNotEmpty)
+                Text(preview, maxLines: 2, overflow: TextOverflow.ellipsis),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -480,10 +473,12 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
       if (!didPop && category != null) setState(() => category = null);
     },
     child: Scaffold(
+      backgroundColor: AppColors.bone,
       appBar: AppBar(
+        backgroundColor: AppColors.bone,
         title: Text(
           category == null
-              ? name
+              ? '安心BAN'
               : category == 'contact'
               ? '聯絡人與綽號'
               : category == 'place'
@@ -512,14 +507,8 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
         child: Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: Material(
-            color: AppColors.card,
-            elevation: 5,
-            shadowColor: AppColors.green.withValues(alpha: 0.2),
-            shape: StadiumBorder(
-              side: BorderSide(
-                color: AppColors.freshGreen.withValues(alpha: 0.35),
-              ),
-            ),
+            color: AppColors.ocean,
+            shape: const StadiumBorder(),
             clipBehavior: Clip.antiAlias,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -537,12 +526,7 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
                     publish,
                     enabled: !sameFamilySettings(published, entries),
                   ),
-                  action(
-                    '解除',
-                    Icons.link_off_rounded,
-                    unlink,
-                    destructive: true,
-                  ),
+                  action('解除', Icons.link_off_rounded, unlink),
                 ],
               ),
             ),
@@ -558,39 +542,80 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
                   Text(error!),
                   TextButton(onPressed: () => load(), child: const Text('重試')),
                 ] else ...[
-                  Text(
-                    category == null ? '選擇要為$name設定的項目' : '正在設定：$name',
-                    style: const TextStyle(fontSize: 16),
+                  Row(
+                    children: [
+                      if (category == null) ...[
+                        const CircleAvatar(
+                          backgroundColor: AppColors.celadon,
+                          child: Icon(
+                            Icons.person_outline,
+                            color: AppColors.ink,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                      ],
+                      Expanded(
+                        child: Text(
+                          category == null ? '$name的設定' : '正在設定：$name',
+                          style: TextStyle(
+                            fontSize: category == null ? 32 : 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 10),
                   Text(
                     sameFamilySettings(published, entries)
                         ? '目前沒有未發布的修改'
                         : '有修改尚未發布',
-                    style: const TextStyle(color: AppColors.green),
+                    style: const TextStyle(color: AppColors.leaf),
                   ),
                   const SizedBox(height: 24),
                   if (category == null) ...[
-                    section(
-                      'reminder',
-                      '提醒事項',
-                      '自由填寫要提醒的事情',
-                      Icons.notifications_none_rounded,
-                      const Color(0xFFE3E8F5),
-                    ),
-                    section(
-                      'contact',
-                      '聯絡人與綽號',
-                      '設定稱呼與電話',
-                      Icons.people_alt_outlined,
-                      const Color(0xFFE0EED6),
-                    ),
-                    section(
-                      'place',
-                      '常用地址',
-                      '設定家、診所等地點',
-                      Icons.location_on_outlined,
-                      AppColors.cream,
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final width = constraints.maxWidth;
+                        final half =
+                            width >= 300 &&
+                                MediaQuery.textScalerOf(context).scale(19) <= 26
+                            ? (width - 12) / 2
+                            : width;
+                        return Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: [
+                            SizedBox(
+                              width: half,
+                              child: section(
+                                'contact',
+                                '聯絡人與綽號',
+                                Icons.people_alt_outlined,
+                                AppColors.celadon,
+                              ),
+                            ),
+                            SizedBox(
+                              width: half,
+                              child: section(
+                                'place',
+                                '常用地址',
+                                Icons.location_on_outlined,
+                                AppColors.mutedTeal,
+                              ),
+                            ),
+                            SizedBox(
+                              width: width,
+                              child: section(
+                                'reminder',
+                                '提醒事項',
+                                Icons.notifications_none_rounded,
+                                AppColors.teal,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ] else ...[
                     OutlinedButton.icon(
@@ -669,26 +694,59 @@ class _NameDialogState extends State<_NameDialog> {
     super.dispose();
   }
 
+  String? error;
+
+  void confirm() {
+    final name = input.text.trim();
+    if (name.isEmpty) {
+      setState(() => error = '請輸入長輩名稱');
+      return;
+    }
+    Navigator.pop(context, name);
+  }
+
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('長輩名稱'),
+    scrollable: true,
+    backgroundColor: AppColors.bone,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+    icon: const CircleAvatar(
+      backgroundColor: AppColors.celadon,
+      child: Icon(Icons.edit_outlined, color: AppColors.ink),
+    ),
+    title: const Text('更改長輩名稱'),
     content: TextField(
+      autofocus: true,
       controller: input,
       maxLength: 40,
-      decoration: const InputDecoration(hintText: '例如：阿公、阿嬤'),
+      textInputAction: TextInputAction.done,
+      onSubmitted: (_) => confirm(),
+      onChanged: (_) {
+        if (error != null) setState(() => error = null);
+      },
+      decoration: InputDecoration(
+        labelText: '長輩名稱',
+        hintText: '例如：阿公、阿嬤',
+        errorText: error,
+        filled: true,
+        fillColor: AppColors.card,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+      ),
     ),
     actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('取消'),
-      ),
-      FilledButton(
-        onPressed: () {
-          if (input.text.trim().isNotEmpty) {
-            Navigator.pop(context, input.text.trim());
-          }
-        },
-        child: const Text('確認'),
+      Row(
+        children: [
+          Expanded(
+            child: TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: FilledButton(onPressed: confirm, child: const Text('確認')),
+          ),
+        ],
       ),
     ],
   );

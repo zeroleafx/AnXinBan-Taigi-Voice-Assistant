@@ -29,7 +29,7 @@ void showFamilyFeedback(BuildContext context, String text) {
         elevation: 2,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(24),
-          side: const BorderSide(color: AppColors.freshGreen),
+          side: const BorderSide(color: AppColors.mutedTeal),
         ),
         margin: const EdgeInsets.fromLTRB(24, 0, 24, 16),
         behavior: SnackBarBehavior.floating,
@@ -65,15 +65,15 @@ class _InvitationCodeDialogState extends State<InvitationCodeDialog> {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
             decoration: BoxDecoration(
-              color: AppColors.paleYellow,
+              color: AppColors.bone,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.freshGreen),
+              border: Border.all(color: AppColors.mutedTeal),
             ),
             child: SelectableText(
               widget.code,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                color: AppColors.green,
+                color: AppColors.leaf,
                 fontFamily: 'monospace',
                 fontSize: 30,
                 letterSpacing: 4,
@@ -421,12 +421,12 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                       child: Container(
                         padding: const EdgeInsets.all(24),
                         decoration: const BoxDecoration(
-                          color: AppColors.cream,
+                          color: AppColors.celadon,
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
                           Icons.family_restroom_rounded,
-                          color: AppColors.green,
+                          color: AppColors.leaf,
                           size: 64,
                         ),
                       ),
@@ -440,12 +440,6 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                         fontWeight: FontWeight.w700,
                         color: AppColors.ink,
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      '登入後，即可連結長輩手機\n設定聯絡人與常用地址',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(height: 1.6, color: AppColors.ink),
                     ),
                     const SizedBox(height: 32),
                     FilledButton(
@@ -526,7 +520,10 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                     if (devices.any((d) => d['elder_id'] == cloud.user))
                       Card(
                         child: ListTile(
-                          leading: const Icon(Icons.link, color: Colors.green),
+                          leading: const Icon(
+                            Icons.link,
+                            color: AppColors.leaf,
+                          ),
                           title: const Text('已連結家人'),
                           subtitle: const Text('家人發佈的設定會同步到這支手機'),
                           trailing: IconButton(
@@ -796,53 +793,92 @@ class FamilyPinDialogState extends State<FamilyPinDialog> {
     super.dispose();
   }
 
+  void confirm() {
+    if (pin.text.length != 6 || (widget.create && repeat.text.length != 6)) {
+      setState(() => error = '請輸入完整的六位數 PIN');
+    } else if (widget.create && pin.text != repeat.text) {
+      setState(() => error = '兩次 PIN 不相同，請再確認');
+    } else {
+      Navigator.pop(context, pin.text);
+    }
+  }
+
+  Widget field(
+    TextEditingController controller,
+    String label, {
+    bool first = false,
+  }) {
+    final next = first && widget.create;
+    return TextField(
+      controller: controller,
+      autofocus: first,
+      obscureText: true,
+      enableSuggestions: false,
+      autocorrect: false,
+      keyboardType: TextInputType.number,
+      textInputAction: next ? TextInputAction.next : TextInputAction.done,
+      onSubmitted: next ? null : (_) => confirm(),
+      onChanged: (_) {
+        if (error != null) setState(() => error = null);
+      },
+      inputFormatters: [
+        FilteringTextInputFormatter.digitsOnly,
+        LengthLimitingTextInputFormatter(6),
+      ],
+      decoration: InputDecoration(
+        labelText: label,
+        filled: true,
+        fillColor: AppColors.card,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
+    backgroundColor: AppColors.bone,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+    icon: const CircleAvatar(
+      backgroundColor: AppColors.celadon,
+      child: Icon(Icons.lock_outline, color: AppColors.ink),
+    ),
     title: Text(widget.create ? '建立家人 PIN' : '輸入家人 PIN'),
-    content: SingleChildScrollView(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: pin,
-            obscureText: true,
-            keyboardType: TextInputType.number,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(6),
-            ],
-            decoration: const InputDecoration(labelText: '六位數 PIN'),
-          ),
-          if (widget.create)
-            TextField(
-              controller: repeat,
-              obscureText: true,
-              keyboardType: TextInputType.number,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(6),
-              ],
-              decoration: const InputDecoration(labelText: '再次輸入 PIN'),
-            ),
-          if (error != null) Text(error!),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        field(pin, '六位數 PIN', first: true),
+        if (widget.create) ...[
+          const SizedBox(height: 16),
+          field(repeat, '再次輸入 PIN'),
         ],
-      ),
+        if (error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Semantics(
+              liveRegion: true,
+              child: Text(
+                error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+          ),
+      ],
     ),
     actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('取消'),
-      ),
-      FilledButton(
-        onPressed: () {
-          if (pin.text.length != 6 ||
-              (widget.create && pin.text != repeat.text)) {
-            setState(() => error = '請輸入六位數 PIN，並確認兩次相同');
-            return;
-          }
-          Navigator.pop(context, pin.text);
-        },
-        child: const Text('確認'),
+      Row(
+        children: [
+          Expanded(
+            child: TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: FilledButton(onPressed: confirm, child: const Text('確認')),
+          ),
+        ],
       ),
     ],
   );
@@ -982,7 +1018,7 @@ class _PairCodeDialogState extends State<PairCodeDialog> {
     insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(28),
-      side: BorderSide(color: AppColors.freshGreen.withValues(alpha: 0.4)),
+      side: BorderSide(color: AppColors.mutedTeal.withValues(alpha: 0.4)),
     ),
     contentPadding: const EdgeInsets.all(24),
     content: SizedBox(
@@ -996,12 +1032,12 @@ class _PairCodeDialogState extends State<PairCodeDialog> {
               child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: const BoxDecoration(
-                  color: AppColors.cream,
+                  color: AppColors.celadon,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   Icons.link_rounded,
-                  color: AppColors.green,
+                  color: AppColors.leaf,
                   size: 32,
                 ),
               ),
@@ -1068,12 +1104,12 @@ class _PairCodeDialogState extends State<PairCodeDialog> {
                                   ),
                                   alignment: Alignment.center,
                                   decoration: BoxDecoration(
-                                    color: AppColors.paleYellow,
+                                    color: AppColors.bone,
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
                                       color: i == input.text.length
-                                          ? AppColors.green
-                                          : AppColors.freshGreen,
+                                          ? AppColors.leaf
+                                          : AppColors.mutedTeal,
                                       width: i == input.text.length ? 2 : 1,
                                     ),
                                   ),
@@ -1104,7 +1140,7 @@ class _PairCodeDialogState extends State<PairCodeDialog> {
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size(0, 52),
                       shape: const StadiumBorder(),
-                      foregroundColor: AppColors.green,
+                      foregroundColor: AppColors.leaf,
                     ),
                     onPressed: () => Navigator.pop(context),
                     child: const Text('取消'),
@@ -1116,7 +1152,7 @@ class _PairCodeDialogState extends State<PairCodeDialog> {
                     style: FilledButton.styleFrom(
                       minimumSize: const Size(0, 52),
                       shape: const StadiumBorder(),
-                      backgroundColor: AppColors.green,
+                      backgroundColor: AppColors.leaf,
                     ),
                     onPressed: input.text.length == 6 ? confirm : null,
                     child: const Text('確認'),
