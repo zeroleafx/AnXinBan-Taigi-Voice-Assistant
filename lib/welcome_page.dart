@@ -39,16 +39,16 @@ class WelcomePage extends StatelessWidget {
                         width: 220,
                         height: 220,
                         decoration: BoxDecoration(
-                          color: AppColors.cream,
+                          color: AppColors.celadon,
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: AppColors.freshGreen.withValues(alpha: 0.4),
+                            color: AppColors.mutedTeal.withValues(alpha: 0.4),
                           ),
                         ),
                         child: const Icon(
                           Icons.spa_rounded,
                           size: 120,
-                          color: AppColors.green,
+                          color: AppColors.leaf,
                         ),
                       ),
                       const SizedBox(height: 24),
@@ -65,38 +65,38 @@ class WelcomePage extends StatelessWidget {
                         width: double.infinity,
                         child: FilledButton(
                           style: FilledButton.styleFrom(
-                            minimumSize: const Size.fromHeight(64),
-                            shape: const StadiumBorder(),
-                          ),
-                          onPressed: () => _openRole(context, isFamily: true),
-                          child: const Text(
-                            '家人',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          style: OutlinedButton.styleFrom(
-                            backgroundColor: AppColors.card,
-                            foregroundColor: AppColors.green,
-                            minimumSize: const Size.fromHeight(64),
-                            side: const BorderSide(
-                              color: AppColors.green,
-                              width: 1.5,
-                            ),
+                            minimumSize: const Size.fromHeight(76),
                             shape: const StadiumBorder(),
                           ),
                           onPressed: () => _openRole(context, isFamily: false),
                           child: const Text(
                             '長輩',
                             style: TextStyle(
-                              fontSize: 24,
+                              fontSize: 28,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: 220,
+                        child: OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: AppColors.card,
+                            foregroundColor: AppColors.ocean,
+                            minimumSize: const Size.fromHeight(50),
+                            side: const BorderSide(
+                              color: AppColors.ocean,
+                              width: 1.5,
+                            ),
+                            shape: const StadiumBorder(),
+                          ),
+                          onPressed: () => _openRole(context, isFamily: true),
+                          child: const Text(
+                            '家人',
+                            style: TextStyle(
+                              fontSize: 19,
                               fontWeight: FontWeight.w700,
                             ),
                           ),

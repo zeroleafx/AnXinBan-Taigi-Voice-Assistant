@@ -12,6 +12,75 @@ import 'support/fake_phone.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  testWidgets('reminder accepts free text without aliases', (tester) async {
+    Map<String, String>? saved;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                saved = await showDialog<Map<String, String>>(
+                  context: context,
+                  builder: (_) => const FamilyEntryDialog(kind: 'reminder'),
+                );
+              },
+              child: const Text('新增'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('新增'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsNWidgets(2));
+    await tester.tap(find.text('儲存'));
+    await tester.pump();
+    expect(find.text('請填寫提醒標題（100 字內）與內容（1000 字內）'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).at(0), '回診');
+    await tester.enterText(find.byType(TextField).at(1), '出門記得帶健保卡');
+    await tester.tap(find.text('儲存'));
+    await tester.pumpAndSettle();
+    expect(saved, {
+      'kind': 'reminder',
+      'label': '回診',
+      'aliases': '',
+      'value': '出門記得帶健保卡',
+    });
+  });
+  testWidgets(
+    'six digit pairing preserves leading zero and rejects incomplete input',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: PairCodeDialog())),
+      );
+      for (var i = 0; i < 6; i++) {
+        expect(find.byKey(ValueKey('pairing-digit-$i')), findsOneWidget);
+      }
+      FilledButton confirm() =>
+          tester.widget<FilledButton>(find.widgetWithText(FilledButton, '確認'));
+      expect(confirm().onPressed, isNull);
+      await tester.enterText(find.byType(TextField), '012');
+      await tester.pump();
+      expect(confirm().onPressed, isNull);
+      await tester.enterText(find.byType(TextField), '012345');
+      await tester.pump();
+      expect(confirm().onPressed, isNotNull);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        '012345',
+      );
+      await tester.enterText(find.byType(TextField), '01a234567');
+      await tester.pump();
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        '012345',
+      );
+      await tester.enterText(find.byType(TextField), '01234');
+      await tester.pump();
+      expect(confirm().onPressed, isNull);
+    },
+  );
   testWidgets('invitation dialog copies its code and closes', (tester) async {
     String? copied;
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -36,7 +105,7 @@ void main() {
             body: TextButton(
               onPressed: () => showDialog<void>(
                 context: context,
-                builder: (_) => const InvitationCodeDialog(code: 'test-code'),
+                builder: (_) => const InvitationCodeDialog(code: '012345'),
               ),
               child: const Text('開啟'),
             ),
@@ -48,7 +117,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('複製'));
     await tester.pumpAndSettle();
-    expect(copied, 'test-code');
+    expect(copied, '012345');
     expect(find.text('已複製'), findsOneWidget);
     await tester.tap(find.text('關閉'));
     await tester.pumpAndSettle();
@@ -140,7 +209,7 @@ void main() {
       for (final button in ['取消', '確認']) {
         await tester.tap(find.text('配對'));
         await tester.pumpAndSettle();
-        await tester.enterText(find.byType(TextField), 'test-code');
+        await tester.enterText(find.byType(TextField), '012345');
         await tester.tap(find.text(button));
         await tester.pump();
         await tester.pumpAndSettle();

@@ -90,9 +90,19 @@ class FamilyCloud {
   Future<List<Map<String, dynamic>>> links() =>
       client.from('family_device_links').select();
   Future<String> invite() async =>
-      await client.rpc('create_family_invitation') as String;
+      await client.rpc('create_short_family_invitation') as String;
   Future<void> pair(String code) async {
-    await client.rpc('accept_family_invitation', params: {'code': code.trim()});
+    final result = await client.rpc(
+      'accept_short_family_invitation',
+      params: {'code': code.trim()},
+    ) as Map;
+    if (result['ok'] != true) {
+      throw FamilyPublishException(switch (result['error']) {
+        'rate_limited' => '嘗試次數過多，請 10 分鐘後再試',
+        'already_paired' => '此裝置已配對，請先解除原本的連結',
+        _ => '配對碼不正確或已過期，請家人重新產生',
+      });
+    }
     await FamilyDemoStore().preferences.setString('paired_elder_user', user!);
   }
 
@@ -144,7 +154,7 @@ class FamilyCloud {
       return;
     }
     await FamilyDemoStore().preferences.setString('paired_elder_user', user!);
-    final data = await snapshot(matches.single['owner_id'] as String);
+    final data = await elderSnapshot(matches.single['id'] as String);
     if (data == null) {
       await FamilyDemoStore().write('applied', []);
       return;
@@ -154,8 +164,37 @@ class FamilyCloud {
         .toList();
     await FamilyDemoStore().write('applied', entries);
     await client.rpc(
-      'ack_family_settings',
-      params: {'version': data['revision']},
+      'ack_elder_settings',
+      params: {'link_id': matches.single['id'], 'version': data['revision']},
+    );
+  }
+
+  Future<Map<String, dynamic>?> elderSnapshot(String linkId) => client
+      .from('elder_snapshots')
+      .select()
+      .eq('link_id', linkId)
+      .maybeSingle();
+
+  Future<List<Map<String, dynamic>>> elderSnapshots() =>
+      client.from('elder_snapshots').select();
+
+  Future<int> publishElder(
+    String linkId,
+    List<Map<String, String>> entries,
+    int revision,
+  ) async => (await client.rpc(
+    'publish_elder_settings',
+    params: {
+      'link_id': linkId,
+      'items': entries,
+      'expected_revision': revision,
+    },
+  ) as num).toInt();
+
+  Future<void> renameElder(String linkId, String name) async {
+    await client.rpc(
+      'rename_paired_elder',
+      params: {'link_id': linkId, 'display_name': name},
     );
   }
 

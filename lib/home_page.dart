@@ -130,7 +130,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               aliases: aliases,
             ),
           );
-        } else {
+        } else if (entry['kind'] == 'place') {
           for (final alias in [entry['label']!, ...aliases]) {
             _assistant.familyPlaces[normalizeTranscript(alias)] =
                 entry['value']!;
@@ -244,7 +244,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       selectedIcon: const Icon(Icons.volume_up_rounded),
       style: IconButton.styleFrom(
         minimumSize: const Size.square(48),
-        backgroundColor: voice.enabled ? AppColors.green : AppColors.cream,
+        backgroundColor: voice.enabled ? AppColors.leaf : AppColors.celadon,
         foregroundColor: voice.enabled ? Colors.white : AppColors.ink,
       ),
       onPressed: _preparingVoice ? null : _toggleVoice,
@@ -409,14 +409,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         ? MicState.busy
         : MicState.ready;
     return Scaffold(
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [AppColors.paleYellow, AppColors.sand],
-          ),
-        ),
+      body: ColoredBox(
+        color: AppColors.bone,
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
@@ -701,7 +695,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     tooltip: '關閉',
     iconSize: 26,
     style: IconButton.styleFrom(
-      backgroundColor: AppColors.cream,
+      backgroundColor: AppColors.celadon,
       foregroundColor: AppColors.ink,
       minimumSize: const Size.square(48),
     ),
@@ -725,10 +719,10 @@ class _TopBar extends StatelessWidget {
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: AppColors.cream,
+            color: AppColors.celadon,
             borderRadius: BorderRadius.circular(14),
           ),
-          child: const Icon(Icons.spa_rounded, color: AppColors.green),
+          child: const Icon(Icons.spa_rounded, color: AppColors.leaf),
         ),
         const SizedBox(width: 10),
         // The name gives way on narrow screens; the help button never does.
@@ -822,10 +816,10 @@ class _Card extends StatelessWidget {
     decoration: BoxDecoration(
       color: AppColors.card,
       borderRadius: BorderRadius.circular(28),
-      border: Border.all(color: AppColors.freshGreen.withValues(alpha: 0.35)),
+      border: Border.all(color: AppColors.mutedTeal.withValues(alpha: 0.35)),
       boxShadow: const [
         BoxShadow(
-          color: Color(0x1A3D5A1E),
+          color: Color(0x1A263638),
           blurRadius: 24,
           offset: Offset(0, 8),
         ),
@@ -907,10 +901,10 @@ class _Hint extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: const BoxDecoration(
-          color: AppColors.cream,
+          color: AppColors.celadon,
           shape: BoxShape.circle,
         ),
-        child: Icon(icon, size: 21, color: AppColors.green),
+        child: Icon(icon, size: 21, color: AppColors.leaf),
       ),
       const SizedBox(width: 10),
       Flexible(
@@ -958,8 +952,8 @@ class ResultCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = switch (tone) {
-      OutcomeTone.done => AppColors.green,
-      OutcomeTone.info => AppColors.leaf,
+      OutcomeTone.done => AppColors.leaf,
+      OutcomeTone.info => AppColors.ocean,
       OutcomeTone.problem => AppColors.coral,
     };
     final detail = this.detail;
@@ -1072,8 +1066,8 @@ class _CardButton extends StatelessWidget {
         style: OutlinedButton.styleFrom(
           minimumSize: const Size.fromHeight(54),
           shape: const StadiumBorder(),
-          side: BorderSide(color: AppColors.green.withValues(alpha: 0.6)),
-          foregroundColor: AppColors.green,
+          side: BorderSide(color: AppColors.leaf.withValues(alpha: 0.6)),
+          foregroundColor: AppColors.leaf,
         ),
         icon: icon,
         label: label,
@@ -1105,12 +1099,12 @@ class _ContactButton extends StatelessWidget {
       minimumSize: const Size.fromHeight(58),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      side: BorderSide(color: AppColors.freshGreen.withValues(alpha: 0.8)),
+      side: BorderSide(color: AppColors.mutedTeal.withValues(alpha: 0.8)),
       foregroundColor: AppColors.ink,
     ),
     child: Row(
       children: [
-        const Icon(Icons.call_rounded, color: AppColors.green),
+        const Icon(Icons.call_rounded, color: AppColors.leaf),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -1155,8 +1149,8 @@ class _DownloadBar extends StatelessWidget {
     child: LinearProgressIndicator(
       value: value,
       minHeight: 14,
-      color: AppColors.green,
-      backgroundColor: AppColors.cream,
+      color: AppColors.leaf,
+      backgroundColor: AppColors.celadon,
     ),
   );
 }

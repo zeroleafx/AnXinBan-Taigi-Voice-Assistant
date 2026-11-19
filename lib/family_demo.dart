@@ -2,7 +2,14 @@ import 'dart:convert';
 import 'dart:async';
 
 import 'family_cloud.dart';
+import 'family_map_picker.dart';
+import 'phone_actions.dart';
+
+import 'package:flutter/foundation.dart';
+
+import 'family_dashboard.dart';
 import 'app_theme.dart';
+import 'confirmation_dialog.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,24 +20,51 @@ import 'family_demo_store.dart';
 import 'home_page.dart';
 import 'voice_command.dart';
 
-void showFamilyFeedback(BuildContext context, String text) {
+void showFamilyFeedback(
+  BuildContext context,
+  String text, {
+  bool liftButton = false,
+}) {
+  final message = Text(
+    text,
+    style: Theme.of(context).textTheme.bodyMedium
+        ?.copyWith(color: AppColors.ink, fontWeight: FontWeight.w600),
+  );
+  final shape = RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(24),
+    side: const BorderSide(color: AppColors.mutedTeal),
+  );
+  // Reserve space through Scaffold so the add button follows the animation.
+  // Only the inset card paints a surface.
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(
       SnackBar(
-        content: Text(
-          text,
-          style: Theme.of(context).textTheme.bodyMedium
-              ?.copyWith(color: AppColors.ink, fontWeight: FontWeight.w600),
-        ),
-        backgroundColor: AppColors.card,
-        elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-          side: const BorderSide(color: AppColors.freshGreen),
-        ),
-        margin: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-        behavior: SnackBarBehavior.floating,
+        content: liftButton
+            ? Padding(
+                padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
+                child: Material(
+                  color: AppColors.card,
+                  elevation: 2,
+                  shape: shape,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 14,
+                    ),
+                    child: message,
+                  ),
+                ),
+              )
+            : message,
+        padding: liftButton ? EdgeInsets.zero : null,
+        backgroundColor: liftButton ? Colors.transparent : AppColors.card,
+        elevation: liftButton ? 0 : 2,
+        shape: liftButton ? const RoundedRectangleBorder() : shape,
+        margin: liftButton ? null : const EdgeInsets.fromLTRB(24, 0, 24, 16),
+        behavior: liftButton
+            ? SnackBarBehavior.fixed
+            : SnackBarBehavior.floating,
         duration: Duration(seconds: text.length > 30 ? 6 : 3),
       ),
     );
@@ -59,12 +93,24 @@ class _InvitationCodeDialogState extends State<InvitationCodeDialog> {
         children: [
           const Text('請在長輩手機輸入此碼。限使用一次，10 分鐘內有效。'),
           const SizedBox(height: 16),
-          SelectableText(
-            widget.code,
-            style: const TextStyle(
-              color: AppColors.green,
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            decoration: BoxDecoration(
+              color: AppColors.bone,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.mutedTeal),
+            ),
+            child: SelectableText(
+              widget.code,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppColors.leaf,
+                fontFamily: 'monospace',
+                fontSize: 30,
+                letterSpacing: 4,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
           if (error != null) Text(error!),
@@ -175,20 +221,8 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
   Future<bool> confirmRemoval(String title, String description) async =>
       await showDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
-          title: Text(title),
-          content: Text(description),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('確認'),
-            ),
-          ],
-        ),
+        builder: (_) =>
+            ConfirmationDialog(title: title, description: description),
       ) ??
       false;
 
@@ -216,7 +250,9 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
   set message(String? value) {
     if (value == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) showFamilyFeedback(context, value);
+      if (mounted) {
+        showFamilyFeedback(context, value, liftButton: widget.isFamily == true);
+      }
     });
   }
 
@@ -325,7 +361,7 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
     if (!mounted) return;
     final pin = await showDialog<String>(
       context: context,
-      builder: (_) => _PinDialog(create: !exists),
+      builder: (_) => FamilyPinDialog(create: !exists),
     );
     if (pin == null) return;
     if (!exists) await store.setPin(pin);
@@ -360,7 +396,7 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
     final original = index == null ? null : pending[index];
     final entry = await showDialog<Map<String, String>>(
       context: context,
-      builder: (_) => _EntryDialog(kind: kind, original: original),
+      builder: (_) => FamilyEntryDialog(kind: kind, original: original),
     );
     if (entry == null || !mounted) return;
     // Preserve the submitted entry across a background lock. Reauthenticate
@@ -401,6 +437,86 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
 
   @override
   Widget build(BuildContext context) {
+    if (widget.isFamily == true &&
+        (!FamilyCloud.available || !cloud.hasFamilyAccount)) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('家人登入')),
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(32),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 380),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: const BoxDecoration(
+                          color: AppColors.celadon,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.family_restroom_rounded,
+                          color: AppColors.leaf,
+                          size: 64,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    const Text(
+                      '一起照顧家人',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    FilledButton(
+                      onPressed: busy || !FamilyCloud.available
+                          ? null
+                          : () async {
+                              setState(() => busy = true);
+                              try {
+                                await cloud.login();
+                              } on FamilyPublishException catch (error) {
+                                if (mounted) {
+                                  setState(() => message = error.message);
+                                }
+                              } catch (_) {
+                                if (mounted) {
+                                  setState(() => message = '登入未完成，請重新嘗試');
+                                }
+                              } finally {
+                                if (mounted) setState(() => busy = false);
+                              }
+                            },
+                      child: Text(busy ? '登入中…' : '使用 Google 登入'),
+                    ),
+                    if (!FamilyCloud.available) ...[
+                      const SizedBox(height: 16),
+                      const Text(
+                        '登入服務暫時無法使用，請確認網路後重新開啟 App。',
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    if (widget.isFamily == true &&
+        FamilyCloud.available &&
+        cloud.hasFamilyAccount) {
+      return const FamilyDashboard();
+    }
     final changed = jsonEncode(pending) != jsonEncode(applied);
     return Scaffold(
       appBar: AppBar(
@@ -438,7 +554,10 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                     if (devices.any((d) => d['elder_id'] == cloud.user))
                       Card(
                         child: ListTile(
-                          leading: const Icon(Icons.link, color: Colors.green),
+                          leading: const Icon(
+                            Icons.link,
+                            color: AppColors.leaf,
+                          ),
                           title: const Text('已連結家人'),
                           subtitle: const Text('家人發佈的設定會同步到這支手機'),
                           trailing: IconButton(
@@ -690,14 +809,14 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
   }
 }
 
-class _PinDialog extends StatefulWidget {
-  const _PinDialog({required this.create});
+class FamilyPinDialog extends StatefulWidget {
+  const FamilyPinDialog({super.key, required this.create});
   final bool create;
   @override
-  State<_PinDialog> createState() => _PinDialogState();
+  State<FamilyPinDialog> createState() => FamilyPinDialogState();
 }
 
-class _PinDialogState extends State<_PinDialog> {
+class FamilyPinDialogState extends State<FamilyPinDialog> {
   final pin = TextEditingController();
   final repeat = TextEditingController();
   String? error;
@@ -708,136 +827,372 @@ class _PinDialogState extends State<_PinDialog> {
     super.dispose();
   }
 
+  void confirm() {
+    if (pin.text.length != 6 || (widget.create && repeat.text.length != 6)) {
+      setState(() => error = '請輸入完整的六位數 PIN');
+    } else if (widget.create && pin.text != repeat.text) {
+      setState(() => error = '兩次 PIN 不相同，請再確認');
+    } else {
+      Navigator.pop(context, pin.text);
+    }
+  }
+
+  Widget field(
+    TextEditingController controller,
+    String label, {
+    bool first = false,
+  }) {
+    final next = first && widget.create;
+    return TextField(
+      controller: controller,
+      autofocus: first,
+      obscureText: true,
+      enableSuggestions: false,
+      autocorrect: false,
+      keyboardType: TextInputType.number,
+      textInputAction: next ? TextInputAction.next : TextInputAction.done,
+      onSubmitted: next ? null : (_) => confirm(),
+      onChanged: (_) {
+        if (error != null) setState(() => error = null);
+      },
+      inputFormatters: [
+        FilteringTextInputFormatter.digitsOnly,
+        LengthLimitingTextInputFormatter(6),
+      ],
+      decoration: InputDecoration(
+        labelText: label,
+        filled: true,
+        fillColor: AppColors.card,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
+    backgroundColor: AppColors.bone,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+    icon: const CircleAvatar(
+      backgroundColor: AppColors.celadon,
+      child: Icon(Icons.lock_outline, color: AppColors.ink),
+    ),
     title: Text(widget.create ? '建立家人 PIN' : '輸入家人 PIN'),
-    content: SingleChildScrollView(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: pin,
-            obscureText: true,
-            keyboardType: TextInputType.number,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(6),
-            ],
-            decoration: const InputDecoration(labelText: '六位數 PIN'),
-          ),
-          if (widget.create)
-            TextField(
-              controller: repeat,
-              obscureText: true,
-              keyboardType: TextInputType.number,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(6),
-              ],
-              decoration: const InputDecoration(labelText: '再次輸入 PIN'),
-            ),
-          if (error != null) Text(error!),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        field(pin, '六位數 PIN', first: true),
+        if (widget.create) ...[
+          const SizedBox(height: 16),
+          field(repeat, '再次輸入 PIN'),
         ],
-      ),
+        if (error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Semantics(
+              liveRegion: true,
+              child: Text(
+                error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+          ),
+      ],
     ),
     actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('取消'),
-      ),
-      FilledButton(
-        onPressed: () {
-          if (pin.text.length != 6 ||
-              (widget.create && pin.text != repeat.text)) {
-            setState(() => error = '請輸入六位數 PIN，並確認兩次相同');
-            return;
-          }
-          Navigator.pop(context, pin.text);
-        },
-        child: const Text('確認'),
+      Row(
+        children: [
+          Expanded(
+            child: TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: FilledButton(onPressed: confirm, child: const Text('確認')),
+          ),
+        ],
       ),
     ],
   );
 }
 
-class _EntryDialog extends StatefulWidget {
-  const _EntryDialog({required this.kind, this.original});
+class FamilyEntryDialog extends StatefulWidget {
+  const FamilyEntryDialog({super.key, required this.kind, this.original});
   final String kind;
   final Map<String, String>? original;
   @override
-  State<_EntryDialog> createState() => _EntryDialogState();
+  State<FamilyEntryDialog> createState() => FamilyEntryDialogState();
 }
 
-class _EntryDialogState extends State<_EntryDialog> {
+class FamilyEntryDialogState extends State<FamilyEntryDialog> {
   late final label = TextEditingController(text: widget.original?['label']);
   late final aliases = TextEditingController(text: widget.original?['aliases']);
   late final value = TextEditingController(text: widget.original?['value']);
+  late final location = TextEditingController(
+    text: widget.original?['location'],
+  );
+  String tab = '標題';
+  Future<void> pickAddress(TextEditingController field) async {
+    final address = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const FamilyMapPicker()),
+    );
+    if (mounted && address != null) field.text = address;
+  }
+
   String? error;
+  late String? time = widget.original?['time'];
+  late bool daily = widget.original?['repeat'] == 'daily';
+
+  Future<void> selectContact() async {
+    final contact = await DevicePhoneActions().pickContact();
+    if (!mounted || contact == null) return;
+    final numbers = contact.numbers.where((n) => n.trim().isNotEmpty).toSet();
+    if (numbers.isEmpty) return;
+    final number = numbers.length == 1
+        ? numbers.first
+        : await showDialog<String>(
+            context: context,
+            builder: (ctx) => SimpleDialog(
+              title: const Text('選擇電話號碼'),
+              children: [
+                for (final n in numbers)
+                  SimpleDialogOption(
+                    onPressed: () => Navigator.pop(ctx, n),
+                    child: Text(n),
+                  ),
+              ],
+            ),
+          );
+    if (!mounted || number == null) return;
+    label.text = contact.name;
+    value.text = number;
+    if (aliases.text.isEmpty) aliases.text = contact.nickname ?? '';
+  }
+
+  Future<void> chooseTime() async {
+    FocusScope.of(context).unfocus();
+    final parsed = DateTime.tryParse('2000-01-01T$time');
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: parsed == null
+          ? TimeOfDay.now()
+          : TimeOfDay.fromDateTime(parsed),
+    );
+    if (picked == null || !mounted) return;
+    setState(
+      () => time =
+          "${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}",
+    );
+  }
+
   @override
   void dispose() {
+    location.dispose();
     label.dispose();
     aliases.dispose();
     value.dispose();
     super.dispose();
   }
 
+  InputDecoration fieldStyle(String label, {String? hint}) => InputDecoration(
+    labelText: label,
+    hintText: hint,
+    filled: true,
+    fillColor: AppColors.card,
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+  );
+
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: Text(widget.kind == 'contact' ? '聯絡人綽號' : '常用地址'),
+    insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+    backgroundColor: AppColors.bone,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+    title: Row(
+      children: [
+        CircleAvatar(
+          backgroundColor: AppColors.celadon,
+          child: Icon(switch (widget.kind) {
+            'reminder' => Icons.notifications_outlined,
+            'place' => Icons.place_outlined,
+            _ => Icons.person_outline,
+          }, color: AppColors.ink),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            "${widget.original == null ? '新增' : '編輯'}${switch (widget.kind) {
+              'contact' => '聯絡人',
+              'place' => '常用地址',
+              _ => '提醒事項',
+            }}",
+          ),
+        ),
+      ],
+    ),
     content: SingleChildScrollView(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: 12,
         mainAxisSize: MainAxisSize.min,
         children: [
-          TextField(
-            controller: label,
-            decoration: InputDecoration(
-              labelText: widget.kind == 'contact' ? '姓名' : '地點名稱',
+          if (widget.kind == 'contact' &&
+              !kIsWeb &&
+              {
+                TargetPlatform.android,
+                TargetPlatform.iOS,
+              }.contains(defaultTargetPlatform))
+            OutlinedButton.icon(
+              onPressed: selectContact,
+              icon: const Icon(Icons.contacts_outlined),
+              label: const Text('從通訊錄選'),
             ),
-          ),
-          TextField(
-            controller: aliases,
-            decoration: const InputDecoration(
-              labelText: '綽號／別名，以逗號分隔',
-              hintText: '女兒,阿美 或 家,厝',
+          if (widget.kind == 'reminder')
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final name in ['標題', '時間', '地點'])
+                  ChoiceChip(
+                    label: Text(name),
+                    selected: tab == name,
+                    showCheckmark: false,
+                    onSelected: (_) {
+                      FocusScope.of(context).unfocus();
+                      setState(() => tab = name);
+                    },
+                  ),
+              ],
             ),
-          ),
-          TextField(
-            controller: value,
-            keyboardType: widget.kind == 'contact'
-                ? TextInputType.phone
-                : TextInputType.streetAddress,
-            decoration: InputDecoration(
-              labelText: widget.kind == 'contact' ? '電話號碼' : '完整地址',
+          if (widget.kind == 'place' || tab == '地點')
+            OutlinedButton.icon(
+              onPressed: () =>
+                  pickAddress(widget.kind == 'place' ? value : location),
+              icon: const Icon(Icons.map_outlined),
+              label: const Text('從地圖選'),
             ),
-          ),
+          if (tab == '標題')
+            TextField(
+              controller: label,
+              decoration: fieldStyle(
+                widget.kind == 'contact'
+                    ? '姓名'
+                    : widget.kind == 'place'
+                    ? '地點名稱'
+                    : '提醒標題',
+              ),
+            ),
+          if (widget.kind == 'contact')
+            TextField(
+              controller: aliases,
+              decoration: fieldStyle(
+                '綽號／別名',
+                hint: widget.kind == 'contact' ? '例如：女兒,阿美' : '例如：家,厝',
+              ),
+            ),
+          if (tab == '地點')
+            TextField(
+              controller: location,
+              maxLength: 1000,
+              decoration: fieldStyle('地點（選填）'),
+            ),
+          if (tab == '標題')
+            TextField(
+              controller: value,
+              maxLines: widget.kind == 'reminder' ? 4 : 1,
+              keyboardType: widget.kind == 'contact'
+                  ? TextInputType.phone
+                  : widget.kind == 'reminder'
+                  ? TextInputType.multiline
+                  : TextInputType.streetAddress,
+              decoration: fieldStyle(
+                widget.kind == 'contact'
+                    ? '電話號碼'
+                    : widget.kind == 'place'
+                    ? '完整地址'
+                    : '提醒內容',
+              ),
+            ),
+          if (widget.kind == 'reminder' && tab == '時間') ...[
+            const Divider(height: 1),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.schedule, color: AppColors.leaf),
+              title: const Text('提醒時間'),
+              subtitle: Text(time ?? '未設定'),
+              onTap: chooseTime,
+              trailing: time == null
+                  ? const Icon(Icons.chevron_right)
+                  : IconButton(
+                      tooltip: '清除時間',
+                      icon: const Icon(Icons.close),
+                      onPressed: () => setState(() {
+                        time = null;
+                        daily = false;
+                      }),
+                    ),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('每天重複'),
+              value: daily,
+              onChanged: time == null ? null : (v) => setState(() => daily = v),
+            ),
+          ],
           if (error != null) Text(error!),
         ],
       ),
     ),
     actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('取消'),
-      ),
-      FilledButton(
-        onPressed: () {
-          if (label.text.trim().isEmpty ||
-              aliases.text.trim().isEmpty ||
-              value.text.trim().isEmpty ||
-              (widget.kind == 'contact' &&
-                  !RegExp(r'^\+?[0-9 ()-]{3,25}$')
-                      .hasMatch(value.text.trim()))) {
-            setState(() => error = '請填寫所有欄位，並確認電話號碼格式');
-            return;
-          }
-          Navigator.pop(context, {
-            'kind': widget.kind,
-            'label': label.text.trim(),
-            'aliases': aliases.text.trim(),
-            'value': value.text.trim(),
-          });
-        },
-        child: const Text('儲存'),
+      Row(
+        children: [
+          Expanded(
+            child: TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: FilledButton(
+              onPressed: () {
+                if (label.text.trim().isEmpty ||
+                    (widget.kind == 'contact' && aliases.text.trim().isEmpty) ||
+                    label.text.trim().length > 100 ||
+                    value.text.trim().length > 1000 ||
+                    value.text.trim().isEmpty ||
+                    (widget.kind == 'contact' &&
+                        !RegExp(r'^\+?[0-9 ()-]{3,25}$')
+                            .hasMatch(value.text.trim()))) {
+                  setState(() {
+                    tab = '標題';
+                    error = widget.kind == 'reminder'
+                        ? '請填寫提醒標題（100 字內）與內容（1000 字內）'
+                        : widget.kind == 'place'
+                        ? '請填寫地點名稱（100 字內）與地址（1000 字內）'
+                        : '請填寫所有欄位，並確認電話號碼格式';
+                  });
+                  return;
+                }
+                Navigator.pop(context, {
+                  'kind': widget.kind,
+                  'label': label.text.trim(),
+                  'aliases': aliases.text.trim(),
+                  'value': value.text.trim(),
+                  if (widget.kind == 'reminder' &&
+                      location.text.trim().isNotEmpty)
+                    'location': location.text.trim(),
+                  if (widget.kind == 'reminder' && time != null) ...{
+                    'time': time!,
+                    'repeat': daily ? 'daily' : 'once',
+                  },
+                });
+              },
+              child: const Text('儲存'),
+            ),
+          ),
+        ],
       ),
     ],
   );
@@ -854,7 +1209,7 @@ class _PairCodeDialogState extends State<PairCodeDialog> {
   final input = TextEditingController();
   void confirm() {
     final code = input.text.trim();
-    if (code.isNotEmpty) Navigator.pop(context, code);
+    if (RegExp(r'^[0-9]{6}$').hasMatch(code)) Navigator.pop(context, code);
   }
 
   @override
@@ -870,7 +1225,7 @@ class _PairCodeDialogState extends State<PairCodeDialog> {
     insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(28),
-      side: BorderSide(color: AppColors.freshGreen.withValues(alpha: 0.4)),
+      side: BorderSide(color: AppColors.mutedTeal.withValues(alpha: 0.4)),
     ),
     contentPadding: const EdgeInsets.all(24),
     content: SizedBox(
@@ -884,12 +1239,12 @@ class _PairCodeDialogState extends State<PairCodeDialog> {
               child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: const BoxDecoration(
-                  color: AppColors.cream,
+                  color: AppColors.celadon,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   Icons.link_rounded,
-                  color: AppColors.green,
+                  color: AppColors.leaf,
                   size: 32,
                 ),
               ),
@@ -906,40 +1261,81 @@ class _PairCodeDialogState extends State<PairCodeDialog> {
             ),
             const SizedBox(height: 8),
             const Text(
-              '貼上家人提供的配對碼\n連結後即可開始使用',
+              '輸入家人提供的 6 位數配對碼\n也可以直接貼上完整配對碼',
               textAlign: TextAlign.center,
               style: TextStyle(color: AppColors.ink, height: 1.5),
             ),
             const SizedBox(height: 24),
-            TextField(
-              controller: input,
-              autocorrect: false,
-              enableSuggestions: false,
-              textInputAction: TextInputAction.done,
-              onChanged: (_) => setState(() {}),
-              onSubmitted: (_) => confirm(),
-              decoration: InputDecoration(
-                labelText: '配對碼',
-                hintText: '輸入或貼上配對碼',
-                filled: true,
-                fillColor: AppColors.paleYellow,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 18,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(color: AppColors.freshGreen),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(
-                    color: AppColors.green,
-                    width: 2,
-                  ),
+            Semantics(
+              label: '6 位數配對碼',
+              child: SizedBox(
+                height: 64,
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: TextField(
+                        controller: input,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(6),
+                        ],
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        showCursor: false,
+                        style: const TextStyle(color: Colors.transparent),
+                        textInputAction: TextInputAction.done,
+                        onChanged: (_) => setState(() {}),
+                        onSubmitted: (_) => confirm(),
+                        onTap: () => input.selection = TextSelection.collapsed(
+                          offset: input.text.length,
+                        ),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                        ),
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: ExcludeSemantics(
+                          child: Row(
+                            children: List.generate(
+                              6,
+                              (i) => Expanded(
+                                child: Container(
+                                  key: ValueKey('pairing-digit-$i'),
+                                  margin: EdgeInsets.only(
+                                    right: i == 5 ? 0 : 6,
+                                  ),
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.bone,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: i == input.text.length
+                                          ? AppColors.leaf
+                                          : AppColors.mutedTeal,
+                                      width: i == input.text.length ? 2 : 1,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    i < input.text.length ? input.text[i] : '',
+                                    style: const TextStyle(
+                                      fontSize: 26,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.ink,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -951,7 +1347,7 @@ class _PairCodeDialogState extends State<PairCodeDialog> {
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size(0, 52),
                       shape: const StadiumBorder(),
-                      foregroundColor: AppColors.green,
+                      foregroundColor: AppColors.leaf,
                     ),
                     onPressed: () => Navigator.pop(context),
                     child: const Text('取消'),
@@ -963,9 +1359,9 @@ class _PairCodeDialogState extends State<PairCodeDialog> {
                     style: FilledButton.styleFrom(
                       minimumSize: const Size(0, 52),
                       shape: const StadiumBorder(),
-                      backgroundColor: AppColors.green,
+                      backgroundColor: AppColors.leaf,
                     ),
-                    onPressed: input.text.trim().isEmpty ? null : confirm,
+                    onPressed: input.text.length == 6 ? confirm : null,
                     child: const Text('確認'),
                   ),
                 ),

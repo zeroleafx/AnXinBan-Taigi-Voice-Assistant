@@ -1,31 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 
-// Palette: https://colorhunt.co/palette/2a7c1376c457fff8cffbe6c2
+// Shared family and elder interface palette.
 abstract final class AppColors {
-  static const green = Color(0xFF2A7C13);
-  static const leaf = Color(0xFF4E9F2E);
-  static const freshGreen = Color(0xFF76C457);
-  static const cream = Color(0xFFFBE6C2);
-  static const paleYellow = Color(0xFFFFF8CF);
-  static const sand = Color(0xFFFBEBCB);
-  static const card = Color(0xFFFFFCF3);
+  static const leaf = Color(0xFF297345);
+  static const ocean = Color(0xFF236F80);
+  static const teal = Color(0xFF54A86D);
+  static const mutedTeal = Color(0xFF9CDFCD);
+  static const celadon = Color(0xFFC5EEC8);
+  static const bone = Color(0xFFFBFAF7);
+  static const card = Color(0xFFFFFFFF);
   // Darker companion shade for readable text on the palette's light surfaces.
-  static const ink = Color(0xFF293526);
+  static const ink = Color(0xFF263638);
   // Warm accent for recording and problems.
   static const coral = Color(0xFFE0583C);
   static const coralLight = Color(0xFFF28A5E);
 }
 
 ThemeData buildTheme() {
-  final scheme = ColorScheme.fromSeed(seedColor: AppColors.green).copyWith(
-    primary: AppColors.green,
+  final scheme = ColorScheme.fromSeed(seedColor: AppColors.leaf).copyWith(
+    primary: AppColors.leaf,
     onPrimary: Colors.white,
-    secondary: AppColors.freshGreen,
-    onSecondary: AppColors.ink,
-    surface: AppColors.paleYellow,
+    secondary: AppColors.ocean,
+    onSecondary: Colors.white,
+    surface: AppColors.bone,
     onSurface: AppColors.ink,
-    outline: AppColors.green,
+    outline: AppColors.leaf,
     error: AppColors.coral,
   );
   return ThemeData(
@@ -38,7 +38,13 @@ ThemeData buildTheme() {
         ? 'NotoSansTC'
         : null,
     colorScheme: scheme,
-    scaffoldBackgroundColor: AppColors.paleYellow,
+    scaffoldBackgroundColor: AppColors.bone,
+    appBarTheme: const AppBarTheme(
+      backgroundColor: AppColors.bone,
+      foregroundColor: AppColors.ink,
+    ),
+    dialogTheme: const DialogThemeData(backgroundColor: AppColors.card),
+    cardTheme: const CardThemeData(color: AppColors.card),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         minimumSize: const Size.fromHeight(54),
