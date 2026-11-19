@@ -601,31 +601,72 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
         minimum: const EdgeInsets.fromLTRB(20, 12, 20, 16),
         child: Padding(
           padding: const EdgeInsets.only(bottom: 8),
-          child: Material(
-            color: AppColors.ocean,
-            shape: const StadiumBorder(),
-            clipBehavior: Clip.antiAlias,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: Row(
-                children: [
-                  action('重載', Icons.refresh_rounded, () async {
-                    if (await confirm('重新載入設定？', '未發佈的草稿將被雲端設定取代。')) {
-                      await load(discardDraft: true);
-                    }
-                  }),
-                  action('改名', Icons.edit_outlined, rename),
-                  action(
-                    '發布',
-                    Icons.cloud_upload_outlined,
-                    publish,
-                    enabled: !sameFamilySettings(published, entries),
+          child: category != null
+              ? SizedBox(
+                  height: 80,
+                  child: Stack(
+                    alignment: Alignment.topCenter,
+                    children: [
+                      Positioned.fill(
+                        top: 30,
+                        child: ClipPath(
+                          clipper: const _AddBarClipper(),
+                          child: const ColoredBox(color: AppColors.ocean),
+                        ),
+                      ),
+                      Material(
+                        type: MaterialType.transparency,
+                        child: IconButton.filled(
+                          tooltip: switch (category) {
+                            'contact' => '新增聯絡人與綽號',
+                            'place' => '新增常用地址',
+                            _ => '新增提醒事項',
+                          },
+                          style: IconButton.styleFrom(
+                            minimumSize: const Size.square(60),
+                            backgroundColor: AppColors.ocean,
+                            foregroundColor: Colors.white,
+                            elevation: 3,
+                            shadowColor: AppColors.ink.withValues(alpha: 0.28),
+                            shape: const CircleBorder(),
+                          ),
+                          onPressed: busy || loading || error != null
+                              ? null
+                              : () => run(() => edit(category!)),
+                          icon: const Icon(Icons.add_rounded, size: 38),
+                        ),
+                      ),
+                    ],
                   ),
-                  action('解除', Icons.link_off_rounded, unlink),
-                ],
-              ),
-            ),
-          ),
+                )
+              : Material(
+                  color: AppColors.ocean,
+                  shape: const StadiumBorder(),
+                  clipBehavior: Clip.antiAlias,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
+                    child: Row(
+                      children: [
+                        action('重載', Icons.refresh_rounded, () async {
+                          if (await confirm('重新載入設定？', '未發佈的草稿將被雲端設定取代。')) {
+                            await load(discardDraft: true);
+                          }
+                        }),
+                        action('改名', Icons.edit_outlined, rename),
+                        action(
+                          '發布',
+                          Icons.cloud_upload_outlined,
+                          publish,
+                          enabled: !sameFamilySettings(published, entries),
+                        ),
+                        action('解除', Icons.link_off_rounded, unlink),
+                      ],
+                    ),
+                  ),
+                ),
         ),
       ),
       body: loading
@@ -713,24 +754,6 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
                       },
                     ),
                   ] else ...[
-                    OutlinedButton.icon(
-                      onPressed: busy ? null : () => run(() => edit(category!)),
-                      icon: Icon(
-                        category == 'contact'
-                            ? Icons.person_add_alt
-                            : category == 'place'
-                            ? Icons.add_location_alt_outlined
-                            : Icons.add_alert_outlined,
-                      ),
-                      label: Text(
-                        category == 'contact'
-                            ? '新增聯絡人與綽號'
-                            : category == 'place'
-                            ? '新增常用地址'
-                            : '新增提醒事項',
-                      ),
-                    ),
-                    const SizedBox(height: 16),
                     if (!entries.any((e) => e['kind'] == category))
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 32),
@@ -740,12 +763,48 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
                       if (entry['kind'] == category)
                         Card(
                           color: AppColors.card,
+                          margin: const EdgeInsets.only(bottom: 10),
+                          elevation: 3,
+                          shadowColor: AppColors.ink.withValues(alpha: 0.22),
+                          surfaceTintColor: Colors.transparent,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          clipBehavior: Clip.antiAlias,
                           child: ListTile(
-                            title: Text(entry['label']!),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 6,
+                            ),
+                            leading: CircleAvatar(
+                              backgroundColor: AppColors.celadon,
+                              child: Icon(switch (entry['kind']) {
+                                'contact' => Icons.contact_phone_outlined,
+                                'place' => Icons.location_on_outlined,
+                                _ => Icons.notifications_outlined,
+                              }, color: AppColors.leaf),
+                            ),
+                            title: Text(
+                              entry['label']!,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 18,
+                              ),
+                            ),
                             subtitle: Text(
                               entry['kind'] == 'reminder'
+                                  ? [
+                                      if (entry['time'] != null)
+                                        "${entry['time']} · ${entry['repeat'] == 'daily' ? '每天' : '單次'}",
+                                      if (entry['location'] != null)
+                                        entry['location']!,
+                                      entry['value']!,
+                                    ].join('\n')
+                                  : entry['kind'] == 'place'
                                   ? entry['value']!
                                   : '${entry['aliases']}\n${entry['value']}',
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
                             ),
                             onTap: busy
                                 ? null
@@ -845,4 +904,26 @@ class _NameDialogState extends State<_NameDialog> {
       ),
     ],
   );
+}
+
+class _AddBarClipper extends CustomClipper<Path> {
+  const _AddBarClipper();
+
+  @override
+  Path getClip(Size size) {
+    final bar = Offset.zero & size;
+    // The 60-pixel button docks on the top edge with a 6-pixel clearance.
+    final cutout = Rect.fromCircle(
+      center: Offset(size.width / 2, 0),
+      radius: 36,
+    );
+    return Path.combine(
+      PathOperation.intersect,
+      const StadiumBorder().getOuterPath(bar),
+      const CircularNotchedRectangle().getOuterPath(bar, cutout),
+    );
+  }
+
+  @override
+  bool shouldReclip(_AddBarClipper oldClipper) => false;
 }

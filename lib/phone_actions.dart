@@ -234,7 +234,7 @@ class DevicePhoneActions implements PhoneActions {
         Place(
           latitude: position.latitude,
           longitude: position.longitude,
-          address: await _address(position.latitude, position.longitude),
+          address: await addressAt(position.latitude, position.longitude),
         ),
       );
     } on Exception {
@@ -257,7 +257,7 @@ class DevicePhoneActions implements PhoneActions {
   }
 
   /// The address in the phone's own language, or null without one in time.
-  Future<String?> _address(double latitude, double longitude) async {
+  Future<String?> addressAt(double latitude, double longitude) async {
     try {
       final places = await _geocoder
           .placemarkFromCoordinates(latitude, longitude)

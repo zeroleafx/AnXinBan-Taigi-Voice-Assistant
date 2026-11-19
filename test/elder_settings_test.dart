@@ -148,11 +148,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('阿嬤的家'), findsOneWidget);
     expect(find.text('阿公的家'), findsNothing);
+    expect(find.byTooltip('新增常用地址'), findsOneWidget);
+    expect(find.text('發布'), findsNothing);
+    await tester.tap(find.byTooltip('返回分類'));
+    await tester.pumpAndSettle();
     for (final label in ['重載', '改名', '發布', '解除']) {
       expect(find.text(label), findsOneWidget);
     }
-    await tester.tap(find.byTooltip('返回分類'));
-    await tester.pumpAndSettle();
     expect(find.text('聯絡人與綽號'), findsOneWidget);
     expect(find.text('常用地址'), findsOneWidget);
     expect(find.text('阿嬤的家'), findsOneWidget);
