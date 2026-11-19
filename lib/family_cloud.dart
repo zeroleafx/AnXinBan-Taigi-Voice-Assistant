@@ -90,9 +90,19 @@ class FamilyCloud {
   Future<List<Map<String, dynamic>>> links() =>
       client.from('family_device_links').select();
   Future<String> invite() async =>
-      await client.rpc('create_family_invitation') as String;
+      await client.rpc('create_short_family_invitation') as String;
   Future<void> pair(String code) async {
-    await client.rpc('accept_family_invitation', params: {'code': code.trim()});
+    final result = await client.rpc(
+      'accept_short_family_invitation',
+      params: {'code': code.trim()},
+    ) as Map;
+    if (result['ok'] != true) {
+      throw FamilyPublishException(switch (result['error']) {
+        'rate_limited' => '嘗試次數過多，請 10 分鐘後再試',
+        'already_paired' => '此裝置已配對，請先解除原本的連結',
+        _ => '配對碼不正確或已過期，請家人重新產生',
+      });
+    }
     await FamilyDemoStore().preferences.setString('paired_elder_user', user!);
   }
 

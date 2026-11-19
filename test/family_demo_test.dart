@@ -12,6 +12,39 @@ import 'support/fake_phone.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  testWidgets(
+    'six digit pairing preserves leading zero and rejects incomplete input',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: PairCodeDialog())),
+      );
+      for (var i = 0; i < 6; i++) {
+        expect(find.byKey(ValueKey('pairing-digit-$i')), findsOneWidget);
+      }
+      FilledButton confirm() =>
+          tester.widget<FilledButton>(find.widgetWithText(FilledButton, '確認'));
+      expect(confirm().onPressed, isNull);
+      await tester.enterText(find.byType(TextField), '012');
+      await tester.pump();
+      expect(confirm().onPressed, isNull);
+      await tester.enterText(find.byType(TextField), '012345');
+      await tester.pump();
+      expect(confirm().onPressed, isNotNull);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        '012345',
+      );
+      await tester.enterText(find.byType(TextField), '01a234567');
+      await tester.pump();
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        '012345',
+      );
+      await tester.enterText(find.byType(TextField), '01234');
+      await tester.pump();
+      expect(confirm().onPressed, isNull);
+    },
+  );
   testWidgets('invitation dialog copies its code and closes', (tester) async {
     String? copied;
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -36,7 +69,7 @@ void main() {
             body: TextButton(
               onPressed: () => showDialog<void>(
                 context: context,
-                builder: (_) => const InvitationCodeDialog(code: 'test-code'),
+                builder: (_) => const InvitationCodeDialog(code: '012345'),
               ),
               child: const Text('開啟'),
             ),
@@ -48,7 +81,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('複製'));
     await tester.pumpAndSettle();
-    expect(copied, 'test-code');
+    expect(copied, '012345');
     expect(find.text('已複製'), findsOneWidget);
     await tester.tap(find.text('關閉'));
     await tester.pumpAndSettle();
@@ -140,7 +173,7 @@ void main() {
       for (final button in ['取消', '確認']) {
         await tester.tap(find.text('配對'));
         await tester.pumpAndSettle();
-        await tester.enterText(find.byType(TextField), 'test-code');
+        await tester.enterText(find.byType(TextField), '012345');
         await tester.tap(find.text(button));
         await tester.pump();
         await tester.pumpAndSettle();

@@ -111,8 +111,18 @@ void main() {
     expect(find.text('等待同步'), findsOneWidget);
     await tester.tap(find.text('阿嬤'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('常用地址'));
+    await tester.pumpAndSettle();
     expect(find.text('阿嬤的家'), findsOneWidget);
     expect(find.text('阿公的家'), findsNothing);
+    for (final label in ['重載', '改名', '發布', '解除']) {
+      expect(find.text(label), findsOneWidget);
+    }
+    await tester.tap(find.byTooltip('返回分類'));
+    await tester.pumpAndSettle();
+    expect(find.text('聯絡人與綽號'), findsOneWidget);
+    expect(find.text('常用地址'), findsOneWidget);
+    expect(find.text('阿嬤的家'), findsNothing);
     expect(find.text('模擬同步到長輩端'), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
@@ -135,7 +145,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('發佈設定'));
+      await tester.tap(find.text('發布'));
       await tester.pumpAndSettle();
       expect(cloud.publishedTo, isNull);
       await tester.enterText(find.byType(TextField), '123456');

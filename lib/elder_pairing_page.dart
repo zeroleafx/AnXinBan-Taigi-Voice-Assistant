@@ -68,6 +68,8 @@ class _ElderPairingPageState extends State<ElderPairingPage> {
       }
       if (mounted) showFamilyFeedback(context, '配對成功');
       await openRecorder();
+    } on FamilyPublishException catch (error) {
+      if (mounted) showFamilyFeedback(context, error.message);
     } on AuthException catch (_) {
       if (mounted) showFamilyFeedback(context, '無法建立裝置連線，請確認網路及匿名登入服務已啟用');
     } catch (_) {

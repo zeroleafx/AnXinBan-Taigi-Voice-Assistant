@@ -53,3 +53,17 @@ transaction and tests isolated publication, unchanged revisions, authorization,
 RLS, acknowledgements and unlink cleanup. This script passed on the remote database on 2026-11-19; its test data
 was rolled back. Local drafts from the former shared editor are not automatically
 assigned to a particular elder; only previously published settings are migrated.
+
+## Six-digit pairing (deployed 2026-11-19)
+
+The current app uses `create_short_family_invitation` and
+`accept_short_family_invitation`. Codes are six numeric characters (including
+leading zeroes), generated with cryptographic randomness, expire after ten
+minutes and are consumed once. Accept attempts are limited to five per
+ authenticated identity per ten minutes and 100 across the project per ten
+minutes. Errors return JSON so failed attempts remain counted. Invitation and
+attempt tables are not directly accessible to clients. Existing UUID RPCs remain
+for older clients; new clients request a fresh numeric code.
+
+`supabase/tests/short_pairing_codes.sql` passed remotely with all test data rolled
+back: generation, rotation, one-time use, expiry, and persisted attempt limits.

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
+import 'confirmation_dialog.dart';
 import 'family_cloud.dart';
 import 'family_demo.dart';
 import 'family_demo_store.dart';
@@ -356,155 +357,283 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
   Future<bool> confirm(String title, String text) async =>
       await showDialog<bool>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(title),
-          content: Text(text),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('確認'),
-            ),
-          ],
-        ),
+        builder: (_) => ConfirmationDialog(title: title, description: text),
       ) ??
       false;
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text(name),
-      actions: [
-        if (unlocked)
-          IconButton(
-            tooltip: '鎖定設定',
-            onPressed: () => setState(() => unlocked = false),
-            icon: const Icon(Icons.lock),
-          ),
-      ],
+  String? category;
+
+  Future<void> publish() async {
+    if (!await unlock()) return;
+    revision = await cloud.publishElder(linkId, entries, revision);
+    await drafts.save(owner, linkId, entries, revision);
+    if (mounted) {
+      setState(() => published = [...entries]);
+      showFamilyFeedback(context, '設定已發佈，等待$name同步');
+    }
+  }
+
+  Future<void> rename() async {
+    if (!await unlock() || !mounted) return;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (_) => _NameDialog(name: name),
+    );
+    if (result == null || !await unlock()) return;
+    await cloud.renameElder(linkId, result);
+    if (mounted) setState(() => name = result);
+  }
+
+  Future<void> unlink() async {
+    if (!await unlock() || !mounted) return;
+    if (!await confirm(
+      '解除與$name的配對？',
+      '此長輩的雲端設定及本機草稿會刪除，其他長輩不受影響。長輩手機下次連線會清除同步副本。',
+    )) {
+      return;
+    }
+    if (!await unlock()) return;
+    await cloud.client.from('family_device_links').delete().eq('id', linkId);
+    final active = (await cloud.links())
+        .where((e) => e['owner_id'] == owner)
+        .map((e) => e['id'] as String)
+        .toSet();
+    await drafts.prune(owner, active);
+    if (mounted && category != null) {
+      setState(() => category = null);
+      await WidgetsBinding.instance.endOfFrame;
+    }
+    if (mounted) Navigator.pop(context);
+  }
+
+  Widget action(
+    String label,
+    IconData icon,
+    Future<void> Function() callback, {
+    bool enabled = true,
+    bool destructive = false,
+  }) => Expanded(
+    child: TextButton(
+      style: TextButton.styleFrom(
+        foregroundColor: destructive ? AppColors.coral : AppColors.green,
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        minimumSize: const Size(48, 64),
+      ),
+      onPressed: busy || loading || error != null || !enabled
+          ? null
+          : () => run(callback),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 25),
+          const SizedBox(height: 6),
+          Text(label),
+        ],
+      ),
     ),
-    body: loading
-        ? const Center(child: CircularProgressIndicator())
-        : ListView(
-            padding: const EdgeInsets.all(24),
-            children: [
-              if (error != null) ...[
-                Text(error!),
-                TextButton(onPressed: () => load(), child: const Text('重試')),
-              ] else ...[
-                Text('這裡的修改只會套用到$name。'),
-                const SizedBox(height: 16),
-                OutlinedButton.icon(
-                  onPressed: busy ? null : () => run(() => edit('contact')),
-                  icon: const Icon(Icons.person_add_alt),
-                  label: const Text('新增聯絡人與綽號'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: busy ? null : () => run(() => edit('place')),
-                  icon: const Icon(Icons.add_location_alt_outlined),
-                  label: const Text('新增常用地址'),
-                ),
-                for (final (index, entry) in entries.indexed)
-                  Card(
-                    color: AppColors.card,
-                    child: ListTile(
-                      leading: Icon(
-                        entry['kind'] == 'contact' ? Icons.person : Icons.place,
+  );
+
+  Widget section(
+    String kind,
+    String title,
+    String description,
+    IconData icon,
+    Color color,
+  ) {
+    final count = entries.where((e) => e['kind'] == kind).length;
+    return Card(
+      color: color,
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 18),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      clipBehavior: Clip.antiAlias,
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 22,
+          vertical: 20,
+        ),
+        leading: Icon(icon, color: AppColors.ink, size: 32),
+        title: Text(
+          title,
+          style: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: AppColors.ink,
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(
+            '$description · $count 筆',
+            style: const TextStyle(color: AppColors.ink),
+          ),
+        ),
+        trailing: const Icon(Icons.chevron_right, color: AppColors.ink),
+        onTap: busy ? null : () => setState(() => category = kind),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: category == null,
+    onPopInvokedWithResult: (didPop, _) {
+      if (!didPop && category != null) setState(() => category = null);
+    },
+    child: Scaffold(
+      appBar: AppBar(
+        title: Text(
+          category == null
+              ? name
+              : category == 'contact'
+              ? '聯絡人與綽號'
+              : '常用地址',
+        ),
+        leading: category == null
+            ? null
+            : IconButton(
+                tooltip: '返回分類',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => setState(() => category = null),
+              ),
+        actions: [
+          if (unlocked)
+            IconButton(
+              tooltip: '鎖定設定',
+              onPressed: () => setState(() => unlocked = false),
+              icon: const Icon(Icons.lock),
+            ),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Material(
+            color: AppColors.card,
+            elevation: 5,
+            shadowColor: AppColors.green.withValues(alpha: 0.2),
+            shape: StadiumBorder(
+              side: BorderSide(
+                color: AppColors.freshGreen.withValues(alpha: 0.35),
+              ),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Row(
+                children: [
+                  action('重載', Icons.refresh_rounded, () async {
+                    if (await confirm('重新載入設定？', '未發佈的草稿將被雲端設定取代。')) {
+                      await load(discardDraft: true);
+                    }
+                  }),
+                  action('改名', Icons.edit_outlined, rename),
+                  action(
+                    '發布',
+                    Icons.cloud_upload_outlined,
+                    publish,
+                    enabled: !sameFamilySettings(published, entries),
+                  ),
+                  action(
+                    '解除',
+                    Icons.link_off_rounded,
+                    unlink,
+                    destructive: true,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(24),
+              children: [
+                if (error != null) ...[
+                  Text(error!),
+                  TextButton(onPressed: () => load(), child: const Text('重試')),
+                ] else ...[
+                  Text(
+                    category == null ? '選擇要為$name設定的項目' : '正在設定：$name',
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    sameFamilySettings(published, entries)
+                        ? '目前沒有未發布的修改'
+                        : '有修改尚未發布',
+                    style: const TextStyle(color: AppColors.green),
+                  ),
+                  const SizedBox(height: 24),
+                  if (category == null) ...[
+                    section(
+                      'contact',
+                      '聯絡人與綽號',
+                      '設定稱呼與電話',
+                      Icons.people_alt_outlined,
+                      const Color(0xFFE0EED6),
+                    ),
+                    section(
+                      'place',
+                      '常用地址',
+                      '設定家、診所等地點',
+                      Icons.location_on_outlined,
+                      AppColors.cream,
+                    ),
+                  ] else ...[
+                    OutlinedButton.icon(
+                      onPressed: busy ? null : () => run(() => edit(category!)),
+                      icon: Icon(
+                        category == 'contact'
+                            ? Icons.person_add_alt
+                            : Icons.add_location_alt_outlined,
                       ),
-                      title: Text(entry['label']!),
-                      subtitle: Text('${entry['aliases']}\n${entry['value']}'),
-                      onTap: busy
-                          ? null
-                          : () => run(() => edit(entry['kind']!, index)),
-                      trailing: IconButton(
-                        tooltip: '移除設定',
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: busy
-                            ? null
-                            : () => run(() async {
-                                if (await unlock()) {
-                                  await save([...entries]..removeAt(index));
-                                }
-                              }),
+                      label: Text(
+                        category == 'contact' ? '新增聯絡人與綽號' : '新增常用地址',
                       ),
                     ),
-                  ),
-                const SizedBox(height: 20),
-                FilledButton(
-                  onPressed: busy || sameFamilySettings(published, entries)
-                      ? null
-                      : () => run(() async {
-                          if (!await unlock()) return;
-                          final nextRevision = await cloud.publishElder(
-                            linkId,
-                            entries,
-                            revision,
-                          );
-                          revision = nextRevision;
-                          await drafts.save(owner, linkId, entries, revision);
-                          if (mounted) {
-                            setState(() => published = [...entries]);
-                            showFamilyFeedback(this.context, '設定已發佈，等待$name同步');
-                          }
-                        }),
-                  child: const Text('發佈設定'),
-                ),
-                TextButton(
-                  onPressed: busy
-                      ? null
-                      : () => run(() async {
-                          if (await confirm('重新載入設定？', '未發佈的草稿將被雲端設定取代。')) {
-                            await load(discardDraft: true);
-                          }
-                        }),
-                  child: const Text('重新載入雲端設定'),
-                ),
-                TextButton(
-                  onPressed: busy
-                      ? null
-                      : () => run(() async {
-                          if (!await unlock() || !mounted) return;
-                          final result = await showDialog<String>(
-                            context: this.context,
-                            builder: (_) => _NameDialog(name: name),
-                          );
-                          if (result == null || !await unlock()) return;
-                          await cloud.renameElder(linkId, result);
-                          if (mounted) setState(() => name = result);
-                        }),
-                  child: const Text('更改長輩名稱'),
-                ),
-                TextButton(
-                  onPressed: busy
-                      ? null
-                      : () => run(() async {
-                          if (!await unlock() || !mounted) return;
-                          if (!await confirm(
-                            '解除與$name的配對？',
-                            '此長輩的雲端設定及本機草稿會刪除，其他長輩不受影響。長輩手機下次連線會清除同步副本。',
-                          )) {
-                            return;
-                          }
-                          if (!await unlock()) return;
-                          await cloud.client
-                              .from('family_device_links')
-                              .delete()
-                              .eq('id', linkId);
-                          final active = (await cloud.links())
-                              .where((e) => e['owner_id'] == owner)
-                              .map((e) => e['id'] as String)
-                              .toSet();
-                          await drafts.prune(owner, active);
-                          if (mounted) Navigator.pop(this.context);
-                        }),
-                  child: const Text('解除配對'),
-                ),
+                    const SizedBox(height: 16),
+                    if (!entries.any((e) => e['kind'] == category))
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 32),
+                        child: Text('尚未新增設定', textAlign: TextAlign.center),
+                      ),
+                    for (final (index, entry) in entries.indexed)
+                      if (entry['kind'] == category)
+                        Card(
+                          color: AppColors.card,
+                          child: ListTile(
+                            title: Text(entry['label']!),
+                            subtitle: Text(
+                              '${entry['aliases']}\n${entry['value']}',
+                            ),
+                            onTap: busy
+                                ? null
+                                : () => run(() => edit(entry['kind']!, index)),
+                            trailing: IconButton(
+                              tooltip: '移除設定',
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: busy
+                                  ? null
+                                  : () => run(() async {
+                                      if (await unlock()) {
+                                        await save(
+                                          [...entries]..removeAt(index),
+                                        );
+                                      }
+                                    }),
+                            ),
+                          ),
+                        ),
+                  ],
+                ],
+                if (busy) const Center(child: Text('處理中…')),
               ],
-              if (busy) const Center(child: Text('處理中…')),
-            ],
-          ),
+            ),
+    ),
   );
 }
 

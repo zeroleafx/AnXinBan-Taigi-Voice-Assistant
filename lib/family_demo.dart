@@ -4,6 +4,7 @@ import 'dart:async';
 import 'family_cloud.dart';
 import 'family_dashboard.dart';
 import 'app_theme.dart';
+import 'confirmation_dialog.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -60,12 +61,24 @@ class _InvitationCodeDialogState extends State<InvitationCodeDialog> {
         children: [
           const Text('請在長輩手機輸入此碼。限使用一次，10 分鐘內有效。'),
           const SizedBox(height: 16),
-          SelectableText(
-            widget.code,
-            style: const TextStyle(
-              color: AppColors.green,
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            decoration: BoxDecoration(
+              color: AppColors.paleYellow,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.freshGreen),
+            ),
+            child: SelectableText(
+              widget.code,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppColors.green,
+                fontFamily: 'monospace',
+                fontSize: 30,
+                letterSpacing: 4,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
           if (error != null) Text(error!),
@@ -176,20 +189,8 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
   Future<bool> confirmRemoval(String title, String description) async =>
       await showDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
-          title: Text(title),
-          content: Text(description),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('確認'),
-            ),
-          ],
-        ),
+        builder: (_) =>
+            ConfirmationDialog(title: title, description: description),
       ) ??
       false;
 
@@ -941,7 +942,7 @@ class _PairCodeDialogState extends State<PairCodeDialog> {
   final input = TextEditingController();
   void confirm() {
     final code = input.text.trim();
-    if (code.isNotEmpty) Navigator.pop(context, code);
+    if (RegExp(r'^[0-9]{6}$').hasMatch(code)) Navigator.pop(context, code);
   }
 
   @override
@@ -993,40 +994,81 @@ class _PairCodeDialogState extends State<PairCodeDialog> {
             ),
             const SizedBox(height: 8),
             const Text(
-              '貼上家人提供的配對碼\n連結後即可開始使用',
+              '輸入家人提供的 6 位數配對碼\n也可以直接貼上完整配對碼',
               textAlign: TextAlign.center,
               style: TextStyle(color: AppColors.ink, height: 1.5),
             ),
             const SizedBox(height: 24),
-            TextField(
-              controller: input,
-              autocorrect: false,
-              enableSuggestions: false,
-              textInputAction: TextInputAction.done,
-              onChanged: (_) => setState(() {}),
-              onSubmitted: (_) => confirm(),
-              decoration: InputDecoration(
-                labelText: '配對碼',
-                hintText: '輸入或貼上配對碼',
-                filled: true,
-                fillColor: AppColors.paleYellow,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 18,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(color: AppColors.freshGreen),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(
-                    color: AppColors.green,
-                    width: 2,
-                  ),
+            Semantics(
+              label: '6 位數配對碼',
+              child: SizedBox(
+                height: 64,
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: TextField(
+                        controller: input,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(6),
+                        ],
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        showCursor: false,
+                        style: const TextStyle(color: Colors.transparent),
+                        textInputAction: TextInputAction.done,
+                        onChanged: (_) => setState(() {}),
+                        onSubmitted: (_) => confirm(),
+                        onTap: () => input.selection = TextSelection.collapsed(
+                          offset: input.text.length,
+                        ),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                        ),
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: ExcludeSemantics(
+                          child: Row(
+                            children: List.generate(
+                              6,
+                              (i) => Expanded(
+                                child: Container(
+                                  key: ValueKey('pairing-digit-$i'),
+                                  margin: EdgeInsets.only(
+                                    right: i == 5 ? 0 : 6,
+                                  ),
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.paleYellow,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: i == input.text.length
+                                          ? AppColors.green
+                                          : AppColors.freshGreen,
+                                      width: i == input.text.length ? 2 : 1,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    i < input.text.length ? input.text[i] : '',
+                                    style: const TextStyle(
+                                      fontSize: 26,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.ink,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1052,7 +1094,7 @@ class _PairCodeDialogState extends State<PairCodeDialog> {
                       shape: const StadiumBorder(),
                       backgroundColor: AppColors.green,
                     ),
-                    onPressed: input.text.trim().isEmpty ? null : confirm,
+                    onPressed: input.text.length == 6 ? confirm : null,
                     child: const Text('確認'),
                   ),
                 ),
