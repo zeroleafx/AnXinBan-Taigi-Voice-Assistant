@@ -144,7 +144,7 @@ class FamilyCloud {
       return;
     }
     await FamilyDemoStore().preferences.setString('paired_elder_user', user!);
-    final data = await snapshot(matches.single['owner_id'] as String);
+    final data = await elderSnapshot(matches.single['id'] as String);
     if (data == null) {
       await FamilyDemoStore().write('applied', []);
       return;
@@ -154,8 +154,37 @@ class FamilyCloud {
         .toList();
     await FamilyDemoStore().write('applied', entries);
     await client.rpc(
-      'ack_family_settings',
-      params: {'version': data['revision']},
+      'ack_elder_settings',
+      params: {'link_id': matches.single['id'], 'version': data['revision']},
+    );
+  }
+
+  Future<Map<String, dynamic>?> elderSnapshot(String linkId) => client
+      .from('elder_snapshots')
+      .select()
+      .eq('link_id', linkId)
+      .maybeSingle();
+
+  Future<List<Map<String, dynamic>>> elderSnapshots() =>
+      client.from('elder_snapshots').select();
+
+  Future<int> publishElder(
+    String linkId,
+    List<Map<String, String>> entries,
+    int revision,
+  ) async => (await client.rpc(
+    'publish_elder_settings',
+    params: {
+      'link_id': linkId,
+      'items': entries,
+      'expected_revision': revision,
+    },
+  ) as num).toInt();
+
+  Future<void> renameElder(String linkId, String name) async {
+    await client.rpc(
+      'rename_paired_elder',
+      params: {'link_id': linkId, 'display_name': name},
     );
   }
 

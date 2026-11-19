@@ -33,3 +33,23 @@ Migrations 001-003 are deployed. Security advisors flag the intentionally privat
 invitations table with no policies and authenticated SECURITY DEFINER RPCs.
 RPCs check auth.uid(), own the access decisions, and fix search_path to empty.
 No authenticated client can insert a device link or read invitation records.
+
+## Individual elder settings (deployed 2026-11-19)
+
+`supabase/migrations/202611190001_per_elder_settings.sql` was deployed on
+2026-11-19 for the new family dashboard. Each pairing now owns an `elder_snapshots` row. Existing
+shared snapshots are copied to each currently paired elder with their revision
+preserved; new pairings start empty. Drafts are keyed by owner and pairing ID.
+The family dashboard prunes drafts for deleted pairings after a successful refresh.
+
+The migration disables the legacy shared publish/delete/ack RPCs so older clients
+cannot accidentally publish shared data or falsely acknowledge an individual
+snapshot. Update both family and elder apps together. The old shared snapshot is
+retained for migration history until the existing last-unlink cleanup removes its
+contents; the new client only reads individual snapshots.
+
+Validation SQL is in `supabase/tests/per_elder_settings.sql`; it runs in a rollback
+transaction and tests isolated publication, unchanged revisions, authorization,
+RLS, acknowledgements and unlink cleanup. This script passed on the remote database on 2026-11-19; its test data
+was rolled back. Local drafts from the former shared editor are not automatically
+assigned to a particular elder; only previously published settings are migrated.

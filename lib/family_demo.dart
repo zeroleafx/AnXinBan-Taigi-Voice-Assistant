@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:async';
 
 import 'family_cloud.dart';
+import 'family_dashboard.dart';
 import 'app_theme.dart';
 
 import 'package:flutter/material.dart';
@@ -325,7 +326,7 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
     if (!mounted) return;
     final pin = await showDialog<String>(
       context: context,
-      builder: (_) => _PinDialog(create: !exists),
+      builder: (_) => FamilyPinDialog(create: !exists),
     );
     if (pin == null) return;
     if (!exists) await store.setPin(pin);
@@ -360,7 +361,7 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
     final original = index == null ? null : pending[index];
     final entry = await showDialog<Map<String, String>>(
       context: context,
-      builder: (_) => _EntryDialog(kind: kind, original: original),
+      builder: (_) => FamilyEntryDialog(kind: kind, original: original),
     );
     if (entry == null || !mounted) return;
     // Preserve the submitted entry across a background lock. Reauthenticate
@@ -401,6 +402,92 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
 
   @override
   Widget build(BuildContext context) {
+    if (widget.isFamily == true &&
+        (!FamilyCloud.available || !cloud.hasFamilyAccount)) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('家人登入')),
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(32),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 380),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: const BoxDecoration(
+                          color: AppColors.cream,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.family_restroom_rounded,
+                          color: AppColors.green,
+                          size: 64,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    const Text(
+                      '一起照顧家人',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      '登入後，即可連結長輩手機\n設定聯絡人與常用地址',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(height: 1.6, color: AppColors.ink),
+                    ),
+                    const SizedBox(height: 32),
+                    FilledButton(
+                      onPressed: busy || !FamilyCloud.available
+                          ? null
+                          : () async {
+                              setState(() => busy = true);
+                              try {
+                                await cloud.login();
+                              } on FamilyPublishException catch (error) {
+                                if (mounted) {
+                                  setState(() => message = error.message);
+                                }
+                              } catch (_) {
+                                if (mounted) {
+                                  setState(() => message = '登入未完成，請重新嘗試');
+                                }
+                              } finally {
+                                if (mounted) setState(() => busy = false);
+                              }
+                            },
+                      child: Text(busy ? '登入中…' : '使用 Google 登入'),
+                    ),
+                    if (!FamilyCloud.available) ...[
+                      const SizedBox(height: 16),
+                      const Text(
+                        '登入服務暫時無法使用，請確認網路後重新開啟 App。',
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    if (widget.isFamily == true &&
+        FamilyCloud.available &&
+        cloud.hasFamilyAccount) {
+      return const FamilyDashboard();
+    }
     final changed = jsonEncode(pending) != jsonEncode(applied);
     return Scaffold(
       appBar: AppBar(
@@ -690,14 +777,14 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
   }
 }
 
-class _PinDialog extends StatefulWidget {
-  const _PinDialog({required this.create});
+class FamilyPinDialog extends StatefulWidget {
+  const FamilyPinDialog({super.key, required this.create});
   final bool create;
   @override
-  State<_PinDialog> createState() => _PinDialogState();
+  State<FamilyPinDialog> createState() => FamilyPinDialogState();
 }
 
-class _PinDialogState extends State<_PinDialog> {
+class FamilyPinDialogState extends State<FamilyPinDialog> {
   final pin = TextEditingController();
   final repeat = TextEditingController();
   String? error;
@@ -760,15 +847,15 @@ class _PinDialogState extends State<_PinDialog> {
   );
 }
 
-class _EntryDialog extends StatefulWidget {
-  const _EntryDialog({required this.kind, this.original});
+class FamilyEntryDialog extends StatefulWidget {
+  const FamilyEntryDialog({super.key, required this.kind, this.original});
   final String kind;
   final Map<String, String>? original;
   @override
-  State<_EntryDialog> createState() => _EntryDialogState();
+  State<FamilyEntryDialog> createState() => FamilyEntryDialogState();
 }
 
-class _EntryDialogState extends State<_EntryDialog> {
+class FamilyEntryDialogState extends State<FamilyEntryDialog> {
   late final label = TextEditingController(text: widget.original?['label']);
   late final aliases = TextEditingController(text: widget.original?['aliases']);
   late final value = TextEditingController(text: widget.original?['value']);
