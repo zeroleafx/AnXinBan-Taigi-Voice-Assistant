@@ -871,7 +871,13 @@ class FamilyEntryDialogState extends State<FamilyEntryDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: Text(widget.kind == 'contact' ? '聯絡人綽號' : '常用地址'),
+    title: Text(
+      widget.kind == 'contact'
+          ? '聯絡人綽號'
+          : widget.kind == 'place'
+          ? '常用地址'
+          : '提醒事項',
+    ),
     content: SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -879,23 +885,35 @@ class FamilyEntryDialogState extends State<FamilyEntryDialog> {
           TextField(
             controller: label,
             decoration: InputDecoration(
-              labelText: widget.kind == 'contact' ? '姓名' : '地點名稱',
+              labelText: widget.kind == 'contact'
+                  ? '姓名'
+                  : widget.kind == 'place'
+                  ? '地點名稱'
+                  : '提醒標題',
             ),
           ),
-          TextField(
-            controller: aliases,
-            decoration: const InputDecoration(
-              labelText: '綽號／別名，以逗號分隔',
-              hintText: '女兒,阿美 或 家,厝',
+          if (widget.kind != 'reminder')
+            TextField(
+              controller: aliases,
+              decoration: const InputDecoration(
+                labelText: '綽號／別名，以逗號分隔',
+                hintText: '女兒,阿美 或 家,厝',
+              ),
             ),
-          ),
           TextField(
             controller: value,
+            maxLines: widget.kind == 'reminder' ? 4 : 1,
             keyboardType: widget.kind == 'contact'
                 ? TextInputType.phone
+                : widget.kind == 'reminder'
+                ? TextInputType.multiline
                 : TextInputType.streetAddress,
             decoration: InputDecoration(
-              labelText: widget.kind == 'contact' ? '電話號碼' : '完整地址',
+              labelText: widget.kind == 'contact'
+                  ? '電話號碼'
+                  : widget.kind == 'place'
+                  ? '完整地址'
+                  : '提醒內容',
             ),
           ),
           if (error != null) Text(error!),
@@ -910,12 +928,18 @@ class FamilyEntryDialogState extends State<FamilyEntryDialog> {
       FilledButton(
         onPressed: () {
           if (label.text.trim().isEmpty ||
-              aliases.text.trim().isEmpty ||
+              (widget.kind != 'reminder' && aliases.text.trim().isEmpty) ||
+              label.text.trim().length > 100 ||
+              value.text.trim().length > 1000 ||
               value.text.trim().isEmpty ||
               (widget.kind == 'contact' &&
                   !RegExp(r'^\+?[0-9 ()-]{3,25}$')
                       .hasMatch(value.text.trim()))) {
-            setState(() => error = '請填寫所有欄位，並確認電話號碼格式');
+            setState(
+              () => error = widget.kind == 'reminder'
+                  ? '請填寫提醒標題（100 字內）與內容（1000 字內）'
+                  : '請填寫所有欄位（名稱 100 字、內容 1000 字內），並確認電話號碼格式',
+            );
             return;
           }
           Navigator.pop(context, {

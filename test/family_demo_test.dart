@@ -12,6 +12,42 @@ import 'support/fake_phone.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  testWidgets('reminder accepts free text without aliases', (tester) async {
+    Map<String, String>? saved;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                saved = await showDialog<Map<String, String>>(
+                  context: context,
+                  builder: (_) => const FamilyEntryDialog(kind: 'reminder'),
+                );
+              },
+              child: const Text('新增'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('新增'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsNWidgets(2));
+    await tester.tap(find.text('儲存'));
+    await tester.pump();
+    expect(find.text('請填寫提醒標題（100 字內）與內容（1000 字內）'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).at(0), '回診');
+    await tester.enterText(find.byType(TextField).at(1), '出門記得帶健保卡');
+    await tester.tap(find.text('儲存'));
+    await tester.pumpAndSettle();
+    expect(saved, {
+      'kind': 'reminder',
+      'label': '回診',
+      'aliases': '',
+      'value': '出門記得帶健保卡',
+    });
+  });
   testWidgets(
     'six digit pairing preserves leading zero and rejects incomplete input',
     (tester) async {

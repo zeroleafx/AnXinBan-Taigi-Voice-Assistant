@@ -486,7 +486,9 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
               ? name
               : category == 'contact'
               ? '聯絡人與綽號'
-              : '常用地址',
+              : category == 'place'
+              ? '常用地址'
+              : '提醒事項',
         ),
         leading: category == null
             ? null
@@ -570,6 +572,13 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
                   const SizedBox(height: 24),
                   if (category == null) ...[
                     section(
+                      'reminder',
+                      '提醒事項',
+                      '自由填寫要提醒的事情',
+                      Icons.notifications_none_rounded,
+                      const Color(0xFFE3E8F5),
+                    ),
+                    section(
                       'contact',
                       '聯絡人與綽號',
                       '設定稱呼與電話',
@@ -589,10 +598,16 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
                       icon: Icon(
                         category == 'contact'
                             ? Icons.person_add_alt
-                            : Icons.add_location_alt_outlined,
+                            : category == 'place'
+                            ? Icons.add_location_alt_outlined
+                            : Icons.add_alert_outlined,
                       ),
                       label: Text(
-                        category == 'contact' ? '新增聯絡人與綽號' : '新增常用地址',
+                        category == 'contact'
+                            ? '新增聯絡人與綽號'
+                            : category == 'place'
+                            ? '新增常用地址'
+                            : '新增提醒事項',
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -608,7 +623,9 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
                           child: ListTile(
                             title: Text(entry['label']!),
                             subtitle: Text(
-                              '${entry['aliases']}\n${entry['value']}',
+                              entry['kind'] == 'reminder'
+                                  ? entry['value']!
+                                  : '${entry['aliases']}\n${entry['value']}',
                             ),
                             onTap: busy
                                 ? null

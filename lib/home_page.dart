@@ -130,7 +130,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               aliases: aliases,
             ),
           );
-        } else {
+        } else if (entry['kind'] == 'place') {
           for (final alias in [entry['label']!, ...aliases]) {
             _assistant.familyPlaces[normalizeTranscript(alias)] =
                 entry['value']!;
