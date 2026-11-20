@@ -1,3 +1,5 @@
+import 'app_feedback.dart';
+
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -226,8 +228,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       if (result == VoiceSetup.ready) {
         voice.setEnabled(true);
       } else {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('台語朗讀準備失敗，請再試一次。')));
+        showAppFeedback(context, '台語朗讀準備失敗，請再試一次。');
       }
     } finally {
       if (mounted) setState(() => _preparingVoice = false);
