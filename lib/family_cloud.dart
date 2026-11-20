@@ -40,8 +40,7 @@ class SecureAuthStorage extends LocalStorage {
 class FamilyCloud {
   static bool available = false;
   static final _androidGoogleReady = GoogleSignIn.instance.initialize(
-    serverClientId:
-        '506241788833-j6jbs2fgo74ijhhfhi40kiq1c99okfmt.apps.googleusercontent.com',
+    serverClientId: '506241788833-j6jbs2fgo74ijhhfhi40kiq1c99okfmt.apps.googleusercontent.com',
   );
   static Future<void> initialize() async {
     await Supabase.initialize(
