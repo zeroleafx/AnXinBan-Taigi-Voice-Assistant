@@ -10,6 +10,7 @@ import 'family_cloud.dart';
 import 'family_demo.dart';
 import 'family_demo_store.dart';
 import 'elder_draft_store.dart';
+import 'pairing_confirmation.dart';
 import 'voice_command.dart';
 
 class FamilyDashboard extends StatefulWidget {
@@ -54,8 +55,34 @@ class _FamilyDashboardState extends State<FamilyDashboard>
   }
 
   Future<void>? activeRefresh;
-  Future<void> refresh() =>
-      activeRefresh ??= loadLinks().whenComplete(() => activeRefresh = null);
+  Future<void> refresh() => activeRefresh ??= loadLinks()
+      .then((_) => checkPairingRequests())
+      .whenComplete(() => activeRefresh = null);
+
+  /// True while a pairing request is on screen, so it is not shown twice.
+  bool reviewing = false;
+
+  /// An elder may enter the code after the family closed it; ask then.
+  Future<void> checkPairingRequests() async {
+    if (reviewing || busy || !mounted || !cloud.hasFamilyAccount) return;
+    if (!(ModalRoute.of(context)?.isCurrent ?? false)) return;
+    final List<PairingRequest> pending;
+    try {
+      pending = await cloud.pendingPairings().timeout(
+        const Duration(seconds: 10),
+      );
+    } catch (_) {
+      return;
+    }
+    if (pending.isEmpty || reviewing || busy || !mounted) return;
+    reviewing = true;
+    try {
+      await reviewPairingRequest(context, cloud, pending.first);
+    } finally {
+      reviewing = false;
+    }
+    if (mounted) await loadLinks();
+  }
 
   Future<void> manualRefresh() async {
     await refresh();
@@ -96,10 +123,18 @@ class _FamilyDashboardState extends State<FamilyDashboard>
     try {
       final code = await cloud.invite();
       if (!mounted) return;
-      await showDialog<void>(
+      final request = await showDialog<PairingRequest>(
         context: context,
-        builder: (_) => InvitationCodeDialog(code: code),
+        builder: (_) => InvitationCodeDialog(code: code, cloud: cloud),
       );
+      if (request != null && mounted) {
+        reviewing = true;
+        try {
+          await reviewPairingRequest(context, cloud, request);
+        } finally {
+          reviewing = false;
+        }
+      }
       await refresh();
     } catch (_) {
       if (mounted) {

@@ -20,11 +20,21 @@ import 'package:supabase_flutter/supabase_flutter.dart' show AuthChangeEvent;
 import 'family_demo_store.dart';
 
 import 'home_page.dart';
+import 'pairing_confirmation.dart';
 import 'voice_command.dart';
 
+/// Shows a new pairing code. With [cloud], it watches for an elder entering
+/// it and closes with that [PairingRequest], for the family to approve.
 class InvitationCodeDialog extends StatefulWidget {
-  const InvitationCodeDialog({super.key, required this.code});
+  const InvitationCodeDialog({
+    super.key,
+    required this.code,
+    this.cloud,
+    this.interval = const Duration(seconds: 2),
+  });
   final String code;
+  final FamilyCloud? cloud;
+  final Duration interval;
   @override
   State<InvitationCodeDialog> createState() => _InvitationCodeDialogState();
 }
@@ -32,6 +42,39 @@ class InvitationCodeDialog extends StatefulWidget {
 class _InvitationCodeDialogState extends State<InvitationCodeDialog> {
   bool copied = false;
   String? error;
+  Timer? poll;
+  bool checking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.cloud != null) {
+      poll = Timer.periodic(widget.interval, (_) => unawaited(watch()));
+    }
+  }
+
+  Future<void> watch() async {
+    if (checking) return;
+    checking = true;
+    try {
+      final pending = await widget.cloud!.pendingPairings();
+      if (pending.isNotEmpty && mounted) {
+        poll?.cancel();
+        Navigator.pop(context, pending.first);
+      }
+    } catch (_) {
+      // Keep showing the code; the next tick tries again.
+    } finally {
+      checking = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    poll?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => AlertDialog(
     backgroundColor: AppColors.card,
@@ -43,7 +86,11 @@ class _InvitationCodeDialogState extends State<InvitationCodeDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('請在長輩手機輸入此碼。限使用一次，10 分鐘內有效。'),
+          Text(
+            widget.cloud == null
+                ? '請在長輩手機輸入此碼。限使用一次，10 分鐘內有效。'
+                : '請在長輩手機輸入此碼，輸入後這裡會請你確認。限使用一次，10 分鐘內有效。',
+          ),
           const SizedBox(height: 16),
           Container(
             width: double.infinity,
@@ -132,17 +179,15 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
       context: context,
       builder: (_) => const PairCodeDialog(),
     );
-    if (code == null) return;
+    if (code == null || !mounted) return;
     try {
-      await cloud.pair(code);
+      // The family has to allow this phone before it is linked.
+      if (!await pairWithFamily(context, cloud, code)) return;
     } catch (error) {
       if (mounted) {
-        final detail = error.toString();
         setState(
-          () => message = detail.contains('23505')
-              ? '這個帳號已連結家人，請先解除原本的配對'
-              : detail.contains('Invalid or expired invitation')
-              ? '配對碼已使用、已過期或不能用於此帳號。請家人產生新的配對碼，並確認兩端使用不同帳號。'
+          () => message = error is FamilyPublishException
+              ? error.message
               : '配對未成功，請確認網路與配對碼後重試',
         );
       }
@@ -564,11 +609,21 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
                             : () => run(() async {
                                 final code = await cloud.invite();
                                 if (!mounted) return;
-                                await showDialog<void>(
-                                  context: this.context,
-                                  builder: (_) =>
-                                      InvitationCodeDialog(code: code),
+                                final request =
+                                    await showDialog<PairingRequest>(
+                                      context: this.context,
+                                      builder: (_) => InvitationCodeDialog(
+                                        code: code,
+                                        cloud: cloud,
+                                      ),
+                                    );
+                                if (request == null || !mounted) return;
+                                await reviewPairingRequest(
+                                  this.context,
+                                  cloud,
+                                  request,
                                 );
+                                await refreshCloud();
                               }),
                         child: const Text('產生一次性配對碼'),
                       ),
