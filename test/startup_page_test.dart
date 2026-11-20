@@ -7,23 +7,35 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  testWidgets('the splash paints its mark and fades into the next page', (
-    tester,
-  ) async {
-    final splash = find.byKey(const ValueKey('splash'));
-    await tester.pumpWidget(const AnXinBanApp());
-    expect(splash, findsOneWidget);
-    // No image to load, so the mark is there on the very first frame.
-    expect(find.byType(Image), findsNothing);
-    expect(find.byType(WelcomePage), findsNothing);
+  testWidgets(
+    'the splash paints its mark and finishes the circle transition before opening the next page',
+    (tester) async {
+      final splash = find.byKey(const ValueKey('splash'));
+      await tester.pumpWidget(const AnXinBanApp());
+      expect(splash, findsOneWidget);
+      // No image to load, so the mark is there on the very first frame.
+      expect(find.byType(Image), findsNothing);
+      expect(find.byType(WelcomePage), findsNothing);
 
-    await tester.pump(const Duration(milliseconds: 1800));
-    await tester.pump(const Duration(milliseconds: 150));
-    expect(splash, findsOneWidget, reason: 'still under the fade');
-    expect(find.byType(WelcomePage), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 1800));
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(splash, findsOneWidget, reason: 'circle is expanding');
+      expect(find.byType(WelcomePage), findsNothing);
 
-    await tester.pumpAndSettle();
-    expect(splash, findsNothing);
-    expect(find.byType(WelcomePage), findsOneWidget);
-  });
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 180));
+      final reveal = find
+          .ancestor(
+            of: find.byType(WelcomePage),
+            matching: find.byType(Opacity),
+          )
+          .first;
+      expect(tester.widget<Opacity>(reveal).opacity, inExclusiveRange(0, 1));
+      await tester.pumpAndSettle();
+      expect(tester.widget<Opacity>(reveal).opacity, 1);
+      expect(splash, findsNothing);
+      expect(find.byType(WelcomePage), findsOneWidget);
+    },
+  );
 }

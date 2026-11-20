@@ -16,7 +16,7 @@ class _StartupPageState extends State<StartupPage>
     with SingleTickerProviderStateMixin {
   late final animation = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1800),
+    duration: const Duration(milliseconds: 2300),
   );
   bool started = false;
   late final Future<bool> paired;
@@ -51,32 +51,40 @@ class _StartupPageState extends State<StartupPage>
     future: paired,
     builder: (context, snapshot) => AnimatedBuilder(
       animation: animation,
-      builder: (context, _) => ColoredBox(
-        // Shows between the splash and the next page while they fade.
-        color: AppColors.bone,
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          transitionBuilder: _fadeThrough,
-          child:
-              animation.isCompleted &&
-                  snapshot.connectionState == ConnectionState.done
-              ? (snapshot.data == true ? const HomePage() : const WelcomePage())
-              : _splash(),
-        ),
-      ),
+      builder: (context, _) =>
+          animation.isCompleted &&
+              snapshot.connectionState == ConnectionState.done
+          ? ColoredBox(
+              color: AppColors.celadon,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: 1),
+                duration: MediaQuery.disableAnimationsOf(context)
+                    ? Duration.zero
+                    : const Duration(milliseconds: 360),
+                curve: Curves.easeInOut,
+                child: snapshot.data == true
+                    ? const HomePage()
+                    : const WelcomePage(),
+                builder: (context, opacity, child) => IgnorePointer(
+                  ignoring: opacity < 1,
+                  child: Opacity(opacity: opacity, child: child),
+                ),
+              ),
+            )
+          : _splash(),
     ),
   );
 
   Widget _splash() {
     final slide = const Interval(
-      .18,
-      .48,
+      .14,
+      .38,
       curve: Curves.easeInOutCubic,
     ).transform(animation.value);
-    final letters = (const Interval(.49, .85).transform(animation.value) * 5)
+    final letters = (const Interval(.39, .67).transform(animation.value) * 5)
         .floor();
     return Scaffold(
-      key: _splashKey,
+      key: const ValueKey('splash'),
       backgroundColor: AppColors.bone,
       body: Center(
         child: Semantics(
@@ -84,37 +92,47 @@ class _StartupPageState extends State<StartupPage>
           child: ExcludeSemantics(
             child: FittedBox(
               fit: BoxFit.scaleDown,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Painted, not decoded from an image, so the mark is already
-                  // there on the first frame when the launch screen goes away.
-                  const CustomPaint(
-                    size: Size.square(96),
-                    painter: _LeafMark(),
-                  ),
-                  ClipRect(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      widthFactor: slide,
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 14),
-                        child: Stack(
-                          children: [
-                            const Opacity(
-                              opacity: 0,
-                              child: Text('安心BAN', style: _wordmark),
-                            ),
-                            Text(
-                              '安心BAN'.substring(0, letters),
-                              style: _wordmark,
-                            ),
-                          ],
+              child: CustomPaint(
+                foregroundPainter: _ExpandingCircle(
+                  const Interval(
+                    .76,
+                    .98,
+                    curve: Curves.easeInOutCubic,
+                  ).transform(animation.value),
+                  MediaQuery.sizeOf(context),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Painted, not decoded from an image, so the mark is already
+                    // there on the first frame when the launch screen goes away.
+                    const CustomPaint(
+                      size: Size.square(96),
+                      painter: _LeafMark(),
+                    ),
+                    ClipRect(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: slide,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 14),
+                          child: Stack(
+                            children: [
+                              const Opacity(
+                                opacity: 0,
+                                child: Text('安心BAN', style: _wordmark),
+                              ),
+                              Text(
+                                '安心BAN'.substring(0, letters),
+                                style: _wordmark,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -123,26 +141,37 @@ class _StartupPageState extends State<StartupPage>
     );
   }
 
-  // Fade through: the splash fades out in the first 30% of the switch, then
-  // the next page fades in, so the two logos and names never overlap.
-  static Widget _fadeThrough(Widget child, Animation<double> fade) =>
-      FadeTransition(
-        opacity: fade.drive(
-          CurveTween(
-            curve: child.key == _splashKey
-                ? const Interval(.7, 1)
-                : const Interval(.3, 1),
-          ),
-        ),
-        child: child,
-      );
-
-  static const _splashKey = ValueKey('splash');
   static const _wordmark = TextStyle(
     fontSize: 34,
     fontWeight: FontWeight.w800,
     color: AppColors.ink,
   );
+}
+
+// Painted over the complete wordmark so the growing circle also covers its text.
+class _ExpandingCircle extends CustomPainter {
+  const _ExpandingCircle(this.progress, this.viewport);
+  final double progress;
+  final Size viewport;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (progress == 0) return;
+    final scale = size.width > viewport.width
+        ? viewport.width / size.width
+        : 1.0;
+    const center = Offset(48, 48);
+    final farCorner = Offset(
+      viewport.width / (2 * scale) + (size.width / 2 - center.dx).abs(),
+      viewport.height / (2 * scale),
+    );
+    final radius = 45 + (farCorner.distance + 2 - 45) * progress;
+    canvas.drawCircle(center, radius, Paint()..color = AppColors.celadon);
+  }
+
+  @override
+  bool shouldRepaint(_ExpandingCircle old) =>
+      old.progress != progress || old.viewport != viewport;
 }
 
 /// The leaf mark of the native launch screens (web/splash-leaf.svg, the

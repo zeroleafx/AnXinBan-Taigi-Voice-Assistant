@@ -1,3 +1,5 @@
+import 'app_feedback.dart';
+
 import 'dart:convert';
 import 'dart:async';
 
@@ -19,56 +21,6 @@ import 'family_demo_store.dart';
 
 import 'home_page.dart';
 import 'voice_command.dart';
-
-void showFamilyFeedback(
-  BuildContext context,
-  String text, {
-  bool liftButton = false,
-}) {
-  final message = Text(
-    text,
-    style: Theme.of(context).textTheme.bodyMedium
-        ?.copyWith(color: AppColors.ink, fontWeight: FontWeight.w600),
-  );
-  final shape = RoundedRectangleBorder(
-    borderRadius: BorderRadius.circular(24),
-    side: const BorderSide(color: AppColors.mutedTeal),
-  );
-  // Reserve space through Scaffold so the add button follows the animation.
-  // Only the inset card paints a surface.
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(
-      SnackBar(
-        content: liftButton
-            ? Padding(
-                padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
-                child: Material(
-                  color: AppColors.card,
-                  elevation: 2,
-                  shape: shape,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 14,
-                    ),
-                    child: message,
-                  ),
-                ),
-              )
-            : message,
-        padding: liftButton ? EdgeInsets.zero : null,
-        backgroundColor: liftButton ? Colors.transparent : AppColors.card,
-        elevation: liftButton ? 0 : 2,
-        shape: liftButton ? const RoundedRectangleBorder() : shape,
-        margin: liftButton ? null : const EdgeInsets.fromLTRB(24, 0, 24, 16),
-        behavior: liftButton
-            ? SnackBarBehavior.fixed
-            : SnackBarBehavior.floating,
-        duration: Duration(seconds: text.length > 30 ? 6 : 3),
-      ),
-    );
-}
 
 class InvitationCodeDialog extends StatefulWidget {
   const InvitationCodeDialog({super.key, required this.code});
@@ -251,7 +203,7 @@ class _FamilyDemoPageState extends State<FamilyDemoPage>
     if (value == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        showFamilyFeedback(context, value, liftButton: widget.isFamily == true);
+        showAppFeedback(context, value);
       }
     });
   }
@@ -943,6 +895,7 @@ class FamilyEntryDialogState extends State<FamilyEntryDialog> {
   }
 
   String? error;
+  Timer? errorTimer;
   late String? time = widget.original?['time'];
   late bool daily = widget.original?['repeat'] == 'daily';
 
@@ -990,6 +943,7 @@ class FamilyEntryDialogState extends State<FamilyEntryDialog> {
 
   @override
   void dispose() {
+    errorTimer?.cancel();
     location.dispose();
     label.dispose();
     aliases.dispose();
@@ -1006,193 +960,211 @@ class FamilyEntryDialogState extends State<FamilyEntryDialog> {
   );
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-    backgroundColor: AppColors.bone,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-    title: Row(
-      children: [
-        CircleAvatar(
-          backgroundColor: AppColors.celadon,
-          child: Icon(switch (widget.kind) {
-            'reminder' => Icons.notifications_outlined,
-            'place' => Icons.place_outlined,
-            _ => Icons.person_outline,
-          }, color: AppColors.ink),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            "${widget.original == null ? '新增' : '編輯'}${switch (widget.kind) {
-              'contact' => '聯絡人',
-              'place' => '常用地址',
-              _ => '提醒事項',
-            }}",
-          ),
-        ),
-      ],
-    ),
-    content: SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        spacing: 12,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (widget.kind == 'contact' &&
-              !kIsWeb &&
-              {
-                TargetPlatform.android,
-                TargetPlatform.iOS,
-              }.contains(defaultTargetPlatform))
-            OutlinedButton.icon(
-              onPressed: selectContact,
-              icon: const Icon(Icons.contacts_outlined),
-              label: const Text('從通訊錄選'),
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.expand,
+    children: [
+      AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        backgroundColor: AppColors.bone,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: AppColors.celadon,
+              child: Icon(switch (widget.kind) {
+                'reminder' => Icons.notifications_outlined,
+                'place' => Icons.place_outlined,
+                _ => Icons.person_outline,
+              }, color: AppColors.ink),
             ),
-          if (widget.kind == 'reminder')
-            Wrap(
-              spacing: 8,
-              children: [
-                for (final name in ['標題', '時間', '地點'])
-                  ChoiceChip(
-                    label: Text(name),
-                    selected: tab == name,
-                    showCheckmark: false,
-                    onSelected: (_) {
-                      FocusScope.of(context).unfocus();
-                      setState(() => tab = name);
-                    },
-                  ),
-              ],
-            ),
-          if (widget.kind == 'place' || tab == '地點')
-            OutlinedButton.icon(
-              onPressed: () =>
-                  pickAddress(widget.kind == 'place' ? value : location),
-              icon: const Icon(Icons.map_outlined),
-              label: const Text('從地圖選'),
-            ),
-          if (tab == '標題')
-            TextField(
-              controller: label,
-              decoration: fieldStyle(
-                widget.kind == 'contact'
-                    ? '姓名'
-                    : widget.kind == 'place'
-                    ? '地點名稱'
-                    : '提醒標題',
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                "${widget.original == null ? '新增' : '編輯'}${switch (widget.kind) {
+                  'contact' => '聯絡人',
+                  'place' => '常用地址',
+                  _ => '提醒事項',
+                }}",
               ),
-            ),
-          if (widget.kind == 'contact')
-            TextField(
-              controller: aliases,
-              decoration: fieldStyle(
-                '綽號／別名',
-                hint: widget.kind == 'contact' ? '例如：女兒,阿美' : '例如：家,厝',
-              ),
-            ),
-          if (tab == '地點')
-            TextField(
-              controller: location,
-              maxLength: 1000,
-              decoration: fieldStyle('地點（選填）'),
-            ),
-          if (tab == '標題')
-            TextField(
-              controller: value,
-              maxLines: widget.kind == 'reminder' ? 4 : 1,
-              keyboardType: widget.kind == 'contact'
-                  ? TextInputType.phone
-                  : widget.kind == 'reminder'
-                  ? TextInputType.multiline
-                  : TextInputType.streetAddress,
-              decoration: fieldStyle(
-                widget.kind == 'contact'
-                    ? '電話號碼'
-                    : widget.kind == 'place'
-                    ? '完整地址'
-                    : '提醒內容',
-              ),
-            ),
-          if (widget.kind == 'reminder' && tab == '時間') ...[
-            const Divider(height: 1),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.schedule, color: AppColors.leaf),
-              title: const Text('提醒時間'),
-              subtitle: Text(time ?? '未設定'),
-              onTap: chooseTime,
-              trailing: time == null
-                  ? const Icon(Icons.chevron_right)
-                  : IconButton(
-                      tooltip: '清除時間',
-                      icon: const Icon(Icons.close),
-                      onPressed: () => setState(() {
-                        time = null;
-                        daily = false;
-                      }),
-                    ),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('每天重複'),
-              value: daily,
-              onChanged: time == null ? null : (v) => setState(() => daily = v),
             ),
           ],
-          if (error != null) Text(error!),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            spacing: 12,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.kind == 'contact' &&
+                  !kIsWeb &&
+                  {
+                    TargetPlatform.android,
+                    TargetPlatform.iOS,
+                  }.contains(defaultTargetPlatform))
+                OutlinedButton.icon(
+                  onPressed: selectContact,
+                  icon: const Icon(Icons.contacts_outlined),
+                  label: const Text('從通訊錄選'),
+                ),
+              if (widget.kind == 'reminder')
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final name in ['標題', '時間', '地點'])
+                      ChoiceChip(
+                        label: Text(name),
+                        selected: tab == name,
+                        showCheckmark: false,
+                        onSelected: (_) {
+                          FocusScope.of(context).unfocus();
+                          setState(() => tab = name);
+                        },
+                      ),
+                  ],
+                ),
+              if (widget.kind == 'place' || tab == '地點')
+                OutlinedButton.icon(
+                  onPressed: () =>
+                      pickAddress(widget.kind == 'place' ? value : location),
+                  icon: const Icon(Icons.map_outlined),
+                  label: const Text('從地圖選'),
+                ),
+              if (tab == '標題')
+                TextField(
+                  controller: label,
+                  decoration: fieldStyle(
+                    widget.kind == 'contact'
+                        ? '姓名'
+                        : widget.kind == 'place'
+                        ? '地點名稱'
+                        : '提醒標題',
+                  ),
+                ),
+              if (widget.kind == 'contact')
+                TextField(
+                  controller: aliases,
+                  decoration: fieldStyle(
+                    '綽號／別名',
+                    hint: widget.kind == 'contact' ? '例如：女兒,阿美' : '例如：家,厝',
+                  ),
+                ),
+              if (tab == '地點')
+                TextField(
+                  controller: location,
+                  maxLength: 1000,
+                  decoration: fieldStyle('地點（選填）'),
+                ),
+              if (tab == '標題')
+                TextField(
+                  controller: value,
+                  maxLines: widget.kind == 'reminder' ? 4 : 1,
+                  keyboardType: widget.kind == 'contact'
+                      ? TextInputType.phone
+                      : widget.kind == 'reminder'
+                      ? TextInputType.multiline
+                      : TextInputType.streetAddress,
+                  decoration: fieldStyle(
+                    widget.kind == 'contact'
+                        ? '電話號碼'
+                        : widget.kind == 'place'
+                        ? '完整地址'
+                        : '提醒內容',
+                  ),
+                ),
+              if (widget.kind == 'reminder' && tab == '時間') ...[
+                const Divider(height: 1),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.schedule, color: AppColors.leaf),
+                  title: const Text('提醒時間'),
+                  subtitle: Text(time ?? '未設定'),
+                  onTap: chooseTime,
+                  trailing: time == null
+                      ? const Icon(Icons.chevron_right)
+                      : IconButton(
+                          tooltip: '清除時間',
+                          icon: const Icon(Icons.close),
+                          onPressed: () => setState(() {
+                            time = null;
+                            daily = false;
+                          }),
+                        ),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('每天重複'),
+                  value: daily,
+                  onChanged: time == null
+                      ? null
+                      : (v) => setState(() => daily = v),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('取消'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton(
+                  onPressed: () {
+                    if (label.text.trim().isEmpty ||
+                        (widget.kind == 'contact' &&
+                            aliases.text.trim().isEmpty) ||
+                        label.text.trim().length > 100 ||
+                        value.text.trim().length > 1000 ||
+                        value.text.trim().isEmpty ||
+                        (widget.kind == 'contact' &&
+                            !RegExp(r'^\+?[0-9 ()-]{3,25}$')
+                                .hasMatch(value.text.trim()))) {
+                      setState(() {
+                        tab = '標題';
+                        error = widget.kind == 'reminder'
+                            ? '請填寫提醒標題（100 字內）與內容（1000 字內）'
+                            : widget.kind == 'place'
+                            ? '請填寫地點名稱（100 字內）與地址（1000 字內）'
+                            : '請填寫所有欄位，並確認電話號碼格式';
+                      });
+                      errorTimer?.cancel();
+                      errorTimer = Timer(const Duration(seconds: 6), () {
+                        if (mounted) setState(() => error = null);
+                      });
+                      return;
+                    }
+                    Navigator.pop(context, {
+                      'kind': widget.kind,
+                      'label': label.text.trim(),
+                      'aliases': aliases.text.trim(),
+                      'value': value.text.trim(),
+                      if (widget.kind == 'reminder' &&
+                          location.text.trim().isNotEmpty)
+                        'location': location.text.trim(),
+                      if (widget.kind == 'reminder' && time != null) ...{
+                        'time': time!,
+                        'repeat': daily ? 'daily' : 'once',
+                      },
+                    });
+                  },
+                  child: const Text('儲存'),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
-    ),
-    actions: [
-      Row(
-        children: [
-          Expanded(
-            child: TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: FilledButton(
-              onPressed: () {
-                if (label.text.trim().isEmpty ||
-                    (widget.kind == 'contact' && aliases.text.trim().isEmpty) ||
-                    label.text.trim().length > 100 ||
-                    value.text.trim().length > 1000 ||
-                    value.text.trim().isEmpty ||
-                    (widget.kind == 'contact' &&
-                        !RegExp(r'^\+?[0-9 ()-]{3,25}$')
-                            .hasMatch(value.text.trim()))) {
-                  setState(() {
-                    tab = '標題';
-                    error = widget.kind == 'reminder'
-                        ? '請填寫提醒標題（100 字內）與內容（1000 字內）'
-                        : widget.kind == 'place'
-                        ? '請填寫地點名稱（100 字內）與地址（1000 字內）'
-                        : '請填寫所有欄位，並確認電話號碼格式';
-                  });
-                  return;
-                }
-                Navigator.pop(context, {
-                  'kind': widget.kind,
-                  'label': label.text.trim(),
-                  'aliases': aliases.text.trim(),
-                  'value': value.text.trim(),
-                  if (widget.kind == 'reminder' &&
-                      location.text.trim().isNotEmpty)
-                    'location': location.text.trim(),
-                  if (widget.kind == 'reminder' && time != null) ...{
-                    'time': time!,
-                    'repeat': daily ? 'daily' : 'once',
-                  },
-                });
-              },
-              child: const Text('儲存'),
-            ),
-          ),
-        ],
+      TopFeedback(
+        message: error,
+        onClose: () {
+          errorTimer?.cancel();
+          setState(() => error = null);
+        },
       ),
     ],
   );
