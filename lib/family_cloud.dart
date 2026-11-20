@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/services.dart';
 
+import 'package:google_sign_in/google_sign_in.dart';
+
 import 'family_demo_store.dart';
 
 class FamilyPublishException implements Exception {
@@ -37,6 +39,10 @@ class SecureAuthStorage extends LocalStorage {
 
 class FamilyCloud {
   static bool available = false;
+  static final _androidGoogleReady = GoogleSignIn.instance.initialize(
+    serverClientId:
+        '506241788833-j6jbs2fgo74ijhhfhi40kiq1c99okfmt.apps.googleusercontent.com',
+  );
   static Future<void> initialize() async {
     await Supabase.initialize(
       url: 'https://ewiszwajtzaamswjoosb.supabase.co',
@@ -62,6 +68,23 @@ class FamilyCloud {
     if (hasFamilyAccount) return;
     if (client.auth.currentUser?.isAnonymous == true) {
       throw const FamilyPublishException('此裝置已用於長輩配對，請使用家人的手機登入管理設定');
+    }
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      await _androidGoogleReady;
+      try {
+        final account = await GoogleSignIn.instance.authenticate();
+        final idToken = account.authentication.idToken;
+        if (idToken == null) {
+          throw const FamilyPublishException('未取得 Google 登入憑證，請再試一次');
+        }
+        await client.auth.signInWithIdToken(
+          provider: OAuthProvider.google,
+          idToken: idToken,
+        );
+      } on GoogleSignInException catch (error) {
+        if (error.code != GoogleSignInExceptionCode.canceled) rethrow;
+      }
+      return;
     }
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
       final oauth = await client.auth.getOAuthSignInUrl(
