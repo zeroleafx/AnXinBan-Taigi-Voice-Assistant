@@ -162,6 +162,33 @@ void main() {
     expect(find.text('模擬同步到長輩端'), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
+  testWidgets('both settings toolbars retain their width', (tester) async {
+    final cloud = FakeFamilyCloud();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(),
+        home: ElderSettingsPage(link: cloud.rows[1], name: '阿嬤', cloud: cloud),
+      ),
+    );
+    await tester.pumpAndSettle();
+    for (final detail in [false, true]) {
+      if (detail) {
+        await tester.tap(find.text('常用地址'));
+        await tester.pumpAndSettle();
+      }
+      final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
+      final bar = find.byWidget(scaffold.floatingActionButton!);
+      final rest = tester.getRect(bar);
+      if (detail) {
+        final notch = find.descendant(of: bar, matching: find.byType(ClipPath));
+        expect(
+          tester.getSize(notch.first).width,
+          tester.getSize(find.byType(Scaffold)).width - 40,
+        );
+      }
+      expect(rest.width, greaterThan(200));
+    }
+  });
   testWidgets(
     'publishing a saved draft targets only that elder and requires PIN',
     (tester) async {
@@ -181,12 +208,19 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      final barY = tester.getCenter(find.text('發布')).dy;
       await tester.tap(find.text('發布'));
       await tester.pumpAndSettle();
       expect(cloud.publishedTo, isNull);
       await tester.enterText(find.byType(TextField), '123456');
       await tester.tap(find.text('確認'));
       await tester.pumpAndSettle();
+      final notice = find.text('設定已發佈，等待阿嬤同步');
+      expect(tester.getCenter(notice).dy, lessThan(160));
+      expect(tester.getCenter(find.text('發布')).dy, barY);
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+      expect(notice, findsNothing);
       expect(cloud.publishedTo, 'b');
       expect((cloud.data['a']!['entries'] as List).single['value'], '台北');
       expect((cloud.data['b']!['entries'] as List).single['value'], '高雄');
