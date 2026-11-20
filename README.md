@@ -123,3 +123,14 @@ flutter build web --dart-define=BREEZE_SPACE_URL=https://YOUR-SPACE.hf.space
 ```
 
 With no URL configured, web remains recording only.
+
+## Model credits and citations
+
+**Speech recognition — Breeze-ASR-26.** AnXinBan uses MediaTek Research’s [Breeze-ASR-26](https://huggingface.co/MediaTek-Research/Breeze-ASR-26) (Apache-2.0) to transcribe speech. The optional web transcription Space loads the original weights. For the research behind the model, see [*Breeze Taigi: Benchmarks and Models for Taiwanese Hokkien Speech Recognition and Synthesis* (2026)](https://arxiv.org/abs/2603.19259).
+
+| Mobile platform | Model conversion used by AnXinBan |
+| --- | --- |
+| iOS | [doggy8088’s GGML conversion](https://huggingface.co/doggy8088/Breeze-ASR-26-GGML), `ggml-model-q5_0.bin` |
+| Android | [LiteRT Community’s int8 conversion](https://huggingface.co/litert-community/Breeze-ASR-26-LiteRT), `breeze_asr_26_30s_i8_kv256.tflite` |
+
+**Spoken replies — MMS-TTS Min Nan.** Android and iOS use Meta’s [MMS-TTS Min Nan checkpoint](https://huggingface.co/facebook/mms-tts-nan) ([CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)), distributed for on-device inference through [willwade’s ONNX conversion at the revision used by the app](https://huggingface.co/willwade/mms-tts-multilingual-models-onnx/tree/4f49fc254f11ddb0e35fbf25b6e48b04463a6779/nan). For the MMS research, see [*Scaling Speech Technology to 1,000+ Languages* (2023)](https://arxiv.org/abs/2305.13516).
