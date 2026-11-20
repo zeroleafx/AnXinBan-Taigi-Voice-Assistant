@@ -1,5 +1,3 @@
-import 'app_feedback.dart';
-
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -45,7 +43,7 @@ class _ElderPairingPageState extends State<ElderPairingPage> {
         await openRecorder();
       }
     } catch (_) {
-      if (mounted) showAppFeedback(context, '暫時無法確認配對，請確認網路後重試');
+      if (mounted) showFamilyFeedback(context, '暫時無法確認配對，請確認網路後重試');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -53,7 +51,7 @@ class _ElderPairingPageState extends State<ElderPairingPage> {
 
   Future<void> pair() async {
     if (!FamilyCloud.available) {
-      showAppFeedback(context, '配對服務尚未連線，請稍後重試');
+      showFamilyFeedback(context, '配對服務尚未連線，請稍後重試');
       return;
     }
     final code = await showDialog<String>(
@@ -68,14 +66,14 @@ class _ElderPairingPageState extends State<ElderPairingPage> {
       if (!links.any((link) => link['elder_id'] == cloud.user)) {
         await cloud.pair(code);
       }
-      if (mounted) showAppFeedback(context, '配對成功');
+      if (mounted) showFamilyFeedback(context, '配對成功');
       await openRecorder();
     } on FamilyPublishException catch (error) {
-      if (mounted) showAppFeedback(context, error.message);
+      if (mounted) showFamilyFeedback(context, error.message);
     } on AuthException catch (_) {
-      if (mounted) showAppFeedback(context, '無法建立裝置連線，請確認網路及匿名登入服務已啟用');
+      if (mounted) showFamilyFeedback(context, '無法建立裝置連線，請確認網路及匿名登入服務已啟用');
     } catch (_) {
-      if (mounted) showAppFeedback(context, '配對未完成，請確認網路，並請家人提供新的配對碼');
+      if (mounted) showFamilyFeedback(context, '配對未完成，請確認網路，並請家人提供新的配對碼');
     } finally {
       if (mounted) setState(() => busy = false);
     }

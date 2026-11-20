@@ -1,5 +1,3 @@
-import 'app_feedback.dart';
-
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -60,7 +58,7 @@ class _FamilyDashboardState extends State<FamilyDashboard>
   Future<void> manualRefresh() async {
     await refresh();
     if (mounted && cloud.hasFamilyAccount) {
-      showAppFeedback(context, error ?? '長輩清單已更新');
+      showFamilyFeedback(context, error ?? '長輩清單已更新', liftButton: true);
     }
   }
 
@@ -103,7 +101,7 @@ class _FamilyDashboardState extends State<FamilyDashboard>
       await refresh();
     } catch (_) {
       if (mounted) {
-        showAppFeedback(context, '無法產生配對碼，請稍後重試');
+        showFamilyFeedback(context, '無法產生配對碼，請稍後重試', liftButton: true);
       }
     } finally {
       if (mounted) setState(() => busy = false);
@@ -188,7 +186,11 @@ class _FamilyDashboardState extends State<FamilyDashboard>
               await cloud.client.auth.signOut();
             } catch (_) {
               if (mounted) {
-                showAppFeedback(this.context, '登出未完成，請再試一次');
+                showFamilyFeedback(
+                  this.context,
+                  '登出未完成，請再試一次',
+                  liftButton: true,
+                );
               }
             } finally {
               if (mounted) setState(() => busy = false);
@@ -329,17 +331,6 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
   int revision = 0;
   bool loading = true, busy = false, unlocked = false;
   String? error;
-  String? feedback;
-  Timer? feedbackTimer;
-
-  void showFeedback(String message) {
-    feedbackTimer?.cancel();
-    setState(() => feedback = message);
-    feedbackTimer = Timer(Duration(seconds: message.length > 30 ? 6 : 3), () {
-      if (mounted) setState(() => feedback = null);
-    });
-  }
-
   @override
   void initState() {
     super.initState();
@@ -349,7 +340,6 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
 
   @override
   void dispose() {
-    feedbackTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -403,7 +393,7 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
     final ok = await pins.unlock(pin);
     if (mounted) {
       setState(() => unlocked = ok);
-      if (!ok) showFeedback('PIN 不正確或已暫時鎖定');
+      if (!ok) showFamilyFeedback(context, 'PIN 不正確或已暫時鎖定');
     }
     return ok && mounted;
   }
@@ -414,7 +404,7 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
     try {
       await action();
     } catch (_) {
-      if (mounted) showFeedback('操作未完成，請重試；若雲端已更新，請先重新載入');
+      if (mounted) showFamilyFeedback(context, '操作未完成，請重試；若雲端已更新，請先重新載入');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -444,7 +434,7 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
         if (i != index &&
             existing['kind'] == 'place' &&
             keys(existing).intersection(keys(value)).isNotEmpty) {
-          if (mounted) showFeedback('此長輩已有相同地點名稱或別名');
+          if (mounted) showFamilyFeedback(context, '此長輩已有相同地點名稱或別名');
           return;
         }
       }
@@ -456,7 +446,7 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
       next[index] = value;
     }
     await save(next);
-    if (mounted) showFeedback('已儲存草稿，發佈後會同步給$name');
+    if (mounted) showFamilyFeedback(context, '已儲存草稿，發佈後會同步給$name');
   }
 
   Future<bool> confirm(String title, String text) async =>
@@ -473,7 +463,7 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
     await drafts.save(owner, linkId, entries, revision);
     if (mounted) {
       setState(() => published = [...entries]);
-      showFeedback('設定已發佈，等待$name同步');
+      showFamilyFeedback(context, '設定已發佈，等待$name同步');
     }
   }
 
@@ -606,16 +596,13 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
             ),
         ],
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: SafeArea(
-        bottom: false,
+      bottomNavigationBar: SafeArea(
         top: false,
-        minimum: const EdgeInsets.symmetric(horizontal: 20),
+        minimum: const EdgeInsets.fromLTRB(20, 12, 20, 16),
         child: Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: category != null
               ? SizedBox(
-                  width: double.infinity,
                   height: 80,
                   child: Stack(
                     alignment: Alignment.topCenter,
@@ -682,197 +669,166 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
                 ),
         ),
       ),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          loading
-              ? const Center(child: CircularProgressIndicator())
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 136),
-                  children: [
-                    if (error != null) ...[
-                      Text(error!),
-                      TextButton(
-                        onPressed: () => load(),
-                        child: const Text('重試'),
-                      ),
-                    ] else ...[
-                      Row(
-                        children: [
-                          if (category == null) ...[
-                            const CircleAvatar(
-                              backgroundColor: AppColors.celadon,
-                              child: Icon(
-                                Icons.person_outline,
-                                color: AppColors.ink,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                          ],
-                          Expanded(
-                            child: Text(
-                              category == null ? '$name的設定' : '正在設定：$name',
-                              style: TextStyle(
-                                fontSize: category == null ? 32 : 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        sameFamilySettings(published, entries)
-                            ? '目前沒有未發布的修改'
-                            : '有修改尚未發布',
-                        style: const TextStyle(color: AppColors.leaf),
-                      ),
-                      const SizedBox(height: 24),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(24),
+              children: [
+                if (error != null) ...[
+                  Text(error!),
+                  TextButton(onPressed: () => load(), child: const Text('重試')),
+                ] else ...[
+                  Row(
+                    children: [
                       if (category == null) ...[
-                        LayoutBuilder(
-                          builder: (context, constraints) {
-                            final width = constraints.maxWidth;
-                            final half =
-                                width >= 300 &&
-                                    MediaQuery.textScalerOf(context)
-                                            .scale(19) <=
-                                        26
-                                ? (width - 12) / 2
-                                : width;
-                            return Wrap(
-                              spacing: 12,
-                              runSpacing: 12,
-                              children: [
-                                SizedBox(
-                                  width: half,
-                                  child: section(
-                                    'contact',
-                                    '聯絡人與綽號',
-                                    Icons.people_alt_outlined,
-                                    AppColors.celadon,
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: half,
-                                  child: section(
-                                    'place',
-                                    '常用地址',
-                                    Icons.location_on_outlined,
-                                    AppColors.mutedTeal,
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: width,
-                                  child: section(
-                                    'reminder',
-                                    '提醒事項',
-                                    Icons.notifications_none_rounded,
-                                    AppColors.teal,
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                      ] else ...[
-                        if (!entries.any((e) => e['kind'] == category))
-                          const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 32),
-                            child: Text('尚未新增設定', textAlign: TextAlign.center),
+                        const CircleAvatar(
+                          backgroundColor: AppColors.celadon,
+                          child: Icon(
+                            Icons.person_outline,
+                            color: AppColors.ink,
                           ),
-                        for (final (index, entry) in entries.indexed)
-                          if (entry['kind'] == category)
-                            Card(
-                              color: AppColors.card,
-                              margin: const EdgeInsets.only(bottom: 10),
-                              elevation: 3,
-                              shadowColor: AppColors.ink.withValues(
-                                alpha: 0.22,
-                              ),
-                              surfaceTintColor: Colors.transparent,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              clipBehavior: Clip.antiAlias,
-                              child: ListTile(
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 6,
-                                ),
-                                leading: CircleAvatar(
-                                  backgroundColor: AppColors.celadon,
-                                  child: Icon(switch (entry['kind']) {
-                                    'contact' => Icons.contact_phone_outlined,
-                                    'place' => Icons.location_on_outlined,
-                                    _ => Icons.notifications_outlined,
-                                  }, color: AppColors.leaf),
-                                ),
-                                title: Text(
-                                  entry['label']!,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 18,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  entry['kind'] == 'reminder'
-                                      ? [
-                                          if (entry['time'] != null)
-                                            "${entry['time']} · ${entry['repeat'] == 'daily' ? '每天' : '單次'}",
-                                          if (entry['location'] != null)
-                                            entry['location']!,
-                                          entry['value']!,
-                                        ].join('\n')
-                                      : entry['kind'] == 'place'
-                                      ? entry['value']!
-                                      : '${entry['aliases']}\n${entry['value']}',
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                onTap: busy
-                                    ? null
-                                    : () => run(
-                                        () => edit(entry['kind']!, index),
-                                      ),
-                                trailing: IconButton(
-                                  tooltip: '移除設定',
-                                  icon: const Icon(Icons.delete_outline),
-                                  onPressed: busy
-                                      ? null
-                                      : () => run(() async {
-                                          if (await unlock() &&
-                                              await confirm(
-                                                '刪除「${entry['label']}」？',
-                                                '發布後，這項設定也會從長輩端移除。',
-                                              ) &&
-                                              await unlock()) {
-                                            await save(
-                                              [...entries]..removeAt(index),
-                                            );
-                                            if (mounted) {
-                                              showFeedback(
-                                                '已從草稿刪除「${entry['label']}」',
-                                              );
-                                            }
-                                          }
-                                        }),
-                                ),
+                        ),
+                        const SizedBox(width: 12),
+                      ],
+                      Expanded(
+                        child: Text(
+                          category == null ? '$name的設定' : '正在設定：$name',
+                          style: TextStyle(
+                            fontSize: category == null ? 32 : 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    sameFamilySettings(published, entries)
+                        ? '目前沒有未發布的修改'
+                        : '有修改尚未發布',
+                    style: const TextStyle(color: AppColors.leaf),
+                  ),
+                  const SizedBox(height: 24),
+                  if (category == null) ...[
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final width = constraints.maxWidth;
+                        final half =
+                            width >= 300 &&
+                                MediaQuery.textScalerOf(context).scale(19) <= 26
+                            ? (width - 12) / 2
+                            : width;
+                        return Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: [
+                            SizedBox(
+                              width: half,
+                              child: section(
+                                'contact',
+                                '聯絡人與綽號',
+                                Icons.people_alt_outlined,
+                                AppColors.celadon,
                               ),
                             ),
-                      ],
-                    ],
-                    if (busy) const Center(child: Text('處理中…')),
+                            SizedBox(
+                              width: half,
+                              child: section(
+                                'place',
+                                '常用地址',
+                                Icons.location_on_outlined,
+                                AppColors.mutedTeal,
+                              ),
+                            ),
+                            SizedBox(
+                              width: width,
+                              child: section(
+                                'reminder',
+                                '提醒事項',
+                                Icons.notifications_none_rounded,
+                                AppColors.teal,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ] else ...[
+                    if (!entries.any((e) => e['kind'] == category))
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 32),
+                        child: Text('尚未新增設定', textAlign: TextAlign.center),
+                      ),
+                    for (final (index, entry) in entries.indexed)
+                      if (entry['kind'] == category)
+                        Card(
+                          color: AppColors.card,
+                          margin: const EdgeInsets.only(bottom: 10),
+                          elevation: 3,
+                          shadowColor: AppColors.ink.withValues(alpha: 0.22),
+                          surfaceTintColor: Colors.transparent,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 6,
+                            ),
+                            leading: CircleAvatar(
+                              backgroundColor: AppColors.celadon,
+                              child: Icon(switch (entry['kind']) {
+                                'contact' => Icons.contact_phone_outlined,
+                                'place' => Icons.location_on_outlined,
+                                _ => Icons.notifications_outlined,
+                              }, color: AppColors.leaf),
+                            ),
+                            title: Text(
+                              entry['label']!,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 18,
+                              ),
+                            ),
+                            subtitle: Text(
+                              entry['kind'] == 'reminder'
+                                  ? [
+                                      if (entry['time'] != null)
+                                        "${entry['time']} · ${entry['repeat'] == 'daily' ? '每天' : '單次'}",
+                                      if (entry['location'] != null)
+                                        entry['location']!,
+                                      entry['value']!,
+                                    ].join('\n')
+                                  : entry['kind'] == 'place'
+                                  ? entry['value']!
+                                  : '${entry['aliases']}\n${entry['value']}',
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            onTap: busy
+                                ? null
+                                : () => run(() => edit(entry['kind']!, index)),
+                            trailing: IconButton(
+                              tooltip: '移除設定',
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: busy
+                                  ? null
+                                  : () => run(() async {
+                                      if (await unlock()) {
+                                        await save(
+                                          [...entries]..removeAt(index),
+                                        );
+                                      }
+                                    }),
+                            ),
+                          ),
+                        ),
                   ],
-                ),
-          TopFeedback(
-            message: feedback,
-            onClose: () {
-              feedbackTimer?.cancel();
-              setState(() => feedback = null);
-            },
-          ),
-        ],
-      ),
+                ],
+                if (busy) const Center(child: Text('處理中…')),
+              ],
+            ),
     ),
   );
 }
