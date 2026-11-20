@@ -55,7 +55,7 @@ class _StartupPageState extends State<StartupPage>
           animation.isCompleted &&
               snapshot.connectionState == ConnectionState.done
           ? ColoredBox(
-              color: AppColors.celadon,
+              color: AppColors.bone,
               child: TweenAnimationBuilder<double>(
                 tween: Tween(begin: 0, end: 1),
                 duration: MediaQuery.disableAnimationsOf(context)
@@ -92,15 +92,14 @@ class _StartupPageState extends State<StartupPage>
           child: ExcludeSemantics(
             child: FittedBox(
               fit: BoxFit.scaleDown,
-              child: CustomPaint(
-                foregroundPainter: _ExpandingCircle(
-                  const Interval(
-                    .76,
-                    .98,
-                    curve: Curves.easeInOutCubic,
-                  ).transform(animation.value),
-                  MediaQuery.sizeOf(context),
-                ),
+              child: Opacity(
+                opacity:
+                    1 -
+                    const Interval(
+                      .76,
+                      1,
+                      curve: Curves.easeInOut,
+                    ).transform(animation.value),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -146,32 +145,6 @@ class _StartupPageState extends State<StartupPage>
     fontWeight: FontWeight.w800,
     color: AppColors.ink,
   );
-}
-
-// Painted over the complete wordmark so the growing circle also covers its text.
-class _ExpandingCircle extends CustomPainter {
-  const _ExpandingCircle(this.progress, this.viewport);
-  final double progress;
-  final Size viewport;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (progress == 0) return;
-    final scale = size.width > viewport.width
-        ? viewport.width / size.width
-        : 1.0;
-    const center = Offset(48, 48);
-    final farCorner = Offset(
-      viewport.width / (2 * scale) + (size.width / 2 - center.dx).abs(),
-      viewport.height / (2 * scale),
-    );
-    final radius = 45 + (farCorner.distance + 2 - 45) * progress;
-    canvas.drawCircle(center, radius, Paint()..color = AppColors.celadon);
-  }
-
-  @override
-  bool shouldRepaint(_ExpandingCircle old) =>
-      old.progress != progress || old.viewport != viewport;
 }
 
 /// The leaf mark of the native launch screens (web/splash-leaf.svg, the
