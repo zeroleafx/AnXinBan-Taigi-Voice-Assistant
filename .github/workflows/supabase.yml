@@ -2,6 +2,7 @@ name: Supabase CI
 
 on:
   push:
+    branches: [main]
     paths:
       - 'supabase/**'
       - '.github/workflows/supabase.yml'
