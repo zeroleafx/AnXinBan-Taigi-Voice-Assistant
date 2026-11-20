@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
-  <circle cx="64" cy="64" r="60" fill="#C5EEC8"/>
-  <g fill="#297345">
-    <path d="M64 62Q44 45 64 25Q84 45 64 62Z"/>
-    <path d="M64 94Q33 91 27 51Q49 52 64 72Q79 52 101 51Q95 91 64 94Z"/>
-  </g>
-</svg>
