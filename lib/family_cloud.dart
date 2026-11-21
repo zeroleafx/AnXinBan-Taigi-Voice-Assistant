@@ -12,6 +12,24 @@ class FamilyPublishException implements Exception {
   final String message;
 }
 
+/// An elder's request to link, waiting for the family. Both phones show
+/// [confirmCode]; the family allows the link only when the two match.
+class PairingRequest {
+  const PairingRequest({required this.id, required this.confirmCode});
+  final String id;
+  final String confirmCode;
+}
+
+enum PairingStatus { pending, approved, rejected, expired }
+
+/// What to tell the elder when a pairing code is not taken.
+String pairingErrorMessage(Object? error) => switch (error) {
+  'rate_limited' => '嘗試次數過多，請 10 分鐘後再試',
+  'already_paired' => '此裝置已配對，請先解除原本的連結',
+  'busy' => '這組配對碼正在等家人確認，請家人先在手機上處理',
+  _ => '配對碼不正確或已過期，請家人重新產生',
+};
+
 bool sameFamilySettings(List<dynamic> saved, List<Map<String, String>> draft) =>
     saved.length == draft.length &&
     Iterable<int>.generate(draft.length).every(
@@ -113,19 +131,72 @@ class FamilyCloud {
       client.from('family_device_links').select();
   Future<String> invite() async =>
       await client.rpc('create_short_family_invitation') as String;
-  Future<void> pair(String code) async {
+
+  /// The elder enters the family's code. A correct code does not link yet:
+  /// it asks the family, who compares the returned number before allowing.
+  Future<PairingRequest> requestPairing(String code) async {
     final result = await client.rpc(
-      'accept_short_family_invitation',
+      'request_family_pairing',
       params: {'code': code.trim()},
+    ) as Map;
+    final id = result['request_id'];
+    final confirmCode = result['confirm_code'];
+    if (result['pending'] != true || id is! String || confirmCode is! String) {
+      throw FamilyPublishException(pairingErrorMessage(result['error']));
+    }
+    return PairingRequest(id: id, confirmCode: confirmCode);
+  }
+
+  /// What the family decided about this phone's request so far.
+  Future<PairingStatus> pairingStatus(String requestId) async {
+    final result = await client.rpc(
+      'pairing_request_status',
+      params: {'request_id': requestId},
+    ) as Map;
+    return switch (result['status']) {
+      'pending' => PairingStatus.pending,
+      'approved' => PairingStatus.approved,
+      'rejected' => PairingStatus.rejected,
+      _ => PairingStatus.expired,
+    };
+  }
+
+  /// Opens the recorder directly from now on, as for any paired elder.
+  Future<void> rememberPairing() =>
+      FamilyDemoStore().preferences.setString('paired_elder_user', user!);
+
+  /// Elder phones waiting for this family, newest first.
+  Future<List<PairingRequest>> pendingPairings() async {
+    final result = await client.rpc('pending_pairing_requests') as Map;
+    return [
+      for (final row in (result['requests'] as List? ?? const []))
+        PairingRequest(
+          id: (row as Map)['id'] as String,
+          confirmCode: row['confirm_code'] as String,
+        ),
+    ];
+  }
+
+  Future<void> approvePairing(String requestId) async {
+    final result = await client.rpc(
+      'approve_pairing_request',
+      params: {'request_id': requestId},
     ) as Map;
     if (result['ok'] != true) {
       throw FamilyPublishException(switch (result['error']) {
-        'rate_limited' => '嘗試次數過多，請 10 分鐘後再試',
-        'already_paired' => '此裝置已配對，請先解除原本的連結',
-        _ => '配對碼不正確或已過期，請家人重新產生',
+        'expired' => '這組配對碼已過期，請重新產生',
+        'already_paired' => '這支長輩手機已經連結其他家人',
+        _ => '這個連結請求已經不存在',
       });
     }
-    await FamilyDemoStore().preferences.setString('paired_elder_user', user!);
+  }
+
+  /// Refuses the request; the code it used stops working.
+  Future<void> rejectPairing(String requestId) async {
+    await client.rpc(
+      'reject_pairing_request',
+      params: {'request_id': requestId},
+    );
   }
 
   Future<bool> shouldOpenRecorder() async {

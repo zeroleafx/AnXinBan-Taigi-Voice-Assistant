@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'family_cloud.dart';
 import 'family_demo.dart';
 import 'home_page.dart';
+import 'pairing_confirmation.dart';
 
 class ElderPairingPage extends StatefulWidget {
   const ElderPairingPage({super.key});
@@ -66,7 +67,8 @@ class _ElderPairingPageState extends State<ElderPairingPage> {
       await cloud.ensureElderIdentity();
       final links = await cloud.links();
       if (!links.any((link) => link['elder_id'] == cloud.user)) {
-        await cloud.pair(code);
+        // The family has to allow this phone before it is linked.
+        if (!mounted || !await pairWithFamily(context, cloud, code)) return;
       }
       if (mounted) showAppFeedback(context, '配對成功');
       await openRecorder();
@@ -99,7 +101,10 @@ class _ElderPairingPageState extends State<ElderPairingPage> {
                 style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 12),
-              const Text('輸入家人提供的配對碼，就能開始使用。', textAlign: TextAlign.center),
+              const Text(
+                '輸入家人提供的配對碼，家人在手機上允許後，就能開始使用。',
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 32),
               FilledButton(
                 onPressed: busy ? null : pair,
