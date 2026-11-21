@@ -13,6 +13,7 @@ import 'contact_matcher.dart';
 import 'emergency_store.dart';
 import 'family_demo_store.dart';
 import 'family_cloud.dart';
+import 'welcome_page.dart';
 import 'voice_command.dart';
 import 'mic_button.dart';
 import 'web_transcription.dart';
@@ -30,6 +31,7 @@ class HomePage extends StatefulWidget {
     this.assistant,
     this.model,
     this.voice,
+    this.useFamilySettings = true,
   });
 
   /// Injected by tests and previews; the device versions are used otherwise.
@@ -40,6 +42,7 @@ class HomePage extends StatefulWidget {
   /// Reads cards aloud. Without it, the device voice is used only when
   /// [assistant] is not injected.
   final TaigiVoice? voice;
+  final bool useFamilySettings;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -70,7 +73,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         );
     _voice = widget.voice;
     if (widget.assistant == null) {
-      unawaited(_initializeFamilySettings());
+      if (widget.useFamilySettings) unawaited(_initializeFamilySettings());
       final synthesizer = _voice == null ? createTaigiSynthesizer() : null;
       final player = _voice == null ? createVoicePlayer() : null;
       if (synthesizer != null && player != null) {
@@ -87,7 +90,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _model.addListener(_modelChanged);
     unawaited(_model.refresh());
     WidgetsBinding.instance.addObserver(this);
-    if (widget.assistant == null && FamilyCloud.available) {
+    if (widget.useFamilySettings &&
+        widget.assistant == null &&
+        FamilyCloud.available) {
       _familyTimer = Timer.periodic(
         const Duration(seconds: 30),
         (_) => unawaited(_syncFamily()),
@@ -265,7 +270,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       unawaited(_model.refresh());
       // The flashlight may have been switched from the control centre.
       unawaited(_assistant.syncTorch());
-      if (widget.assistant == null && FamilyCloud.available) {
+      if (widget.useFamilySettings &&
+          widget.assistant == null &&
+          FamilyCloud.available) {
         unawaited(_syncFamily());
       }
     } else if (state == AppLifecycleState.paused ||
@@ -347,6 +354,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (words != null) _voice?.say(words);
   }
 
+  Future<void> chooseMode() async {
+    try {
+      await FamilyDemoStore().setStandaloneRecorder(false);
+    } catch (_) {
+      if (mounted) showAppFeedback(context, '無法儲存選擇，請再試一次');
+      return;
+    }
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(builder: (_) => const WelcomePage()),
+      (_) => false,
+    );
+  }
+
   (String, String) get _headline {
     if (_recording.isRecording) {
       return ('正在聽…', '${_recording.durationLabel} / 01:00 · 講完再點一下');
@@ -372,7 +393,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               // SOS needs no speech model, so it is here too.
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                child: _TopBar(onHelp: _askForHelpBeforeModel),
+                child: _TopBar(
+                  onChooseMode: widget.useFamilySettings || _busy
+                      ? null
+                      : chooseMode,
+                  onHelp: _askForHelpBeforeModel,
+                ),
               ),
               Expanded(
                 child: Center(
@@ -422,7 +448,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     .clamp(120.0, 196.0);
                 return Column(
                   children: [
-                    _TopBar(onHelp: _assistant.working ? null : _askForHelp),
+                    _TopBar(
+                      onChooseMode: widget.useFamilySettings || _busy
+                          ? null
+                          : chooseMode,
+                      onHelp: _assistant.working ? null : _askForHelp,
+                    ),
                     if (_deferred &&
                         _model.phase != ModelPhase.ready &&
                         !_recording.isRecording)
@@ -706,7 +737,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onHelp});
+  const _TopBar({required this.onHelp, this.onChooseMode});
+  final VoidCallback? onChooseMode;
 
   /// Opens the help card. Always on screen, so help never depends on speech.
   final VoidCallback? onHelp;
@@ -742,6 +774,12 @@ class _TopBar extends StatelessWidget {
             ),
           ),
         ),
+        if (onChooseMode != null)
+          IconButton(
+            tooltip: '切換模式',
+            onPressed: onChooseMode,
+            icon: const Icon(Icons.switch_account_outlined),
+          ),
         const SizedBox(width: 8),
         FilledButton.icon(
           onPressed: onHelp,

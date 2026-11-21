@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'family_cloud.dart';
 import 'family_demo.dart';
+import 'family_demo_store.dart';
 import 'home_page.dart';
 import 'pairing_confirmation.dart';
 
@@ -31,9 +32,24 @@ class _ElderPairingPageState extends State<ElderPairingPage> {
     } catch (_) {
       // The recorder can use the last local copy until synchronization resumes.
     }
-    if (!mounted) return;
+    if (mounted) enterRecorder();
+  }
+
+  Future<void> useWithoutPairing() async {
+    setState(() => busy = true);
+    try {
+      await FamilyDemoStore().setStandaloneRecorder(true);
+    } catch (_) {
+      if (mounted) showAppFeedback(context, '這次可直接使用，但未能記住你的選擇');
+    }
+    if (mounted) enterRecorder(paired: false);
+  }
+
+  void enterRecorder({bool paired = true}) {
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => const HomePage()),
+      MaterialPageRoute<void>(
+        builder: (_) => HomePage(useFamilySettings: paired),
+      ),
     );
   }
 
@@ -74,6 +90,15 @@ class _ElderPairingPageState extends State<ElderPairingPage> {
       await openRecorder();
     } on FamilyPublishException catch (error) {
       if (mounted) showAppFeedback(context, error.message);
+    } on PostgrestException catch (error) {
+      if (mounted) {
+        showAppFeedback(
+          context,
+          error.code == 'PGRST202'
+              ? '配對服務尚未更新，請稍後再試'
+              : '配對服務暫時無法處理請求（${error.code ?? '未知錯誤'}）',
+        );
+      }
     } on AuthException catch (_) {
       if (mounted) showAppFeedback(context, '無法建立裝置連線，請確認網路及匿名登入服務已啟用');
     } catch (_) {
@@ -101,14 +126,16 @@ class _ElderPairingPageState extends State<ElderPairingPage> {
                 style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 12),
-              const Text(
-                '輸入家人提供的配對碼，家人在手機上允許後，就能開始使用。',
-                textAlign: TextAlign.center,
-              ),
+              const Text('輸入家人的配對碼，等家人確認後即可同步設定。', textAlign: TextAlign.center),
               const SizedBox(height: 32),
               FilledButton(
                 onPressed: busy ? null : pair,
                 child: Text(busy ? '連線中…' : '與家人配對'),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: busy ? null : useWithoutPairing,
+                child: const Text('不配對，直接使用'),
               ),
             ],
           ),

@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'phone_actions.dart';
+import 'place.dart';
 
 class FamilyMapPicker extends StatefulWidget {
   const FamilyMapPicker({super.key});
@@ -16,6 +17,7 @@ class _FamilyMapPickerState extends State<FamilyMapPicker> {
   final map = MapController();
   final query = TextEditingController();
   LatLng? point;
+  LatLng? deviceLocation;
   bool busy = false;
   String? error;
   @override
@@ -23,6 +25,35 @@ class _FamilyMapPickerState extends State<FamilyMapPicker> {
     map.dispose();
     query.dispose();
     super.dispose();
+  }
+
+  Future<void> locateMe() async {
+    if (busy) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final result = await DevicePhoneActions().locate(freshOnly: true);
+      if (!mounted) return;
+      if (result is LocationFound) {
+        final place = result.place;
+        final position = LatLng(place.latitude, place.longitude);
+        deviceLocation = position;
+        point = position;
+        query.text = place.address ?? '';
+        map.move(position, 18);
+      } else {
+        error = switch (result) {
+          LocationOff() => '請開啟手機定位，或直接點選地圖',
+          LocationDenied() => '未取得定位權限，可搜尋地址或點選地圖',
+          _ => '暫時無法取得目前位置，請再試一次或點選地圖',
+        };
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
   }
 
   Future<void> search() async {
@@ -47,18 +78,27 @@ class _FamilyMapPickerState extends State<FamilyMapPicker> {
       final points = results
           .map((r) => LatLng(r.latitude, r.longitude))
           .toSet()
-          .take(5);
+          .toList();
+      final origin = deviceLocation;
+      if (origin != null) {
+        const distance = Distance();
+        points.sort(
+          (a, b) => distance(origin, a).compareTo(distance(origin, b)),
+        );
+      }
       if (points.isEmpty) {
         error = '找不到符合的地址，請加上縣市或路名';
         return;
       }
       final matches = await Future.wait(
-        points.map(
-          (p) async => (
-            p,
-            await DevicePhoneActions().addressAt(p.latitude, p.longitude),
-          ),
-        ),
+        points
+            .take(5)
+            .map(
+              (p) async => (
+                p,
+                await DevicePhoneActions().addressAt(p.latitude, p.longitude),
+              ),
+            ),
       );
       if (!mounted) return;
       final chosen = await showModalBottomSheet<LatLng>(
@@ -90,7 +130,7 @@ class _FamilyMapPickerState extends State<FamilyMapPicker> {
       );
       if (!mounted || chosen == null) return;
       point = chosen;
-      map.move(chosen, 16);
+      map.move(chosen, 18);
     } catch (_) {
       if (mounted) error = '查不到地址，可直接點選地圖';
     } finally {
@@ -117,7 +157,16 @@ class _FamilyMapPickerState extends State<FamilyMapPicker> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('從地圖選')),
+    appBar: AppBar(
+      title: const Text('從地圖選'),
+      actions: [
+        TextButton.icon(
+          onPressed: busy ? null : locateMe,
+          icon: const Icon(Icons.my_location),
+          label: const Text('我的位置'),
+        ),
+      ],
+    ),
     body: SafeArea(
       child: Column(
         children: [
@@ -168,6 +217,25 @@ class _FamilyMapPickerState extends State<FamilyMapPicker> {
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'com.anxinban.app',
                 ),
+                if (deviceLocation != null)
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: deviceLocation!,
+                        width: 18,
+                        height: 18,
+                        child: const DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Colors.blue,
+                            shape: BoxShape.circle,
+                            border: Border.fromBorderSide(
+                              BorderSide(color: Colors.white, width: 2),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 if (point != null)
                   MarkerLayer(
                     markers: [

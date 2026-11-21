@@ -7,6 +7,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Deliberately local: pending edits and the elder's applied copy are separate.
 class FamilyDemoStore {
   final preferences = DemoPreferences();
+  Future<bool> get prefersStandaloneRecorder async =>
+      await preferences.getInt('standalone_recorder') == 1;
+
+  Future<void> setStandaloneRecorder(bool enabled) =>
+      preferences.setInt('standalone_recorder', enabled ? 1 : 0);
+
   Future<void> reconcileCloudDeletion(String owner, String? clearedAt) async {
     if (clearedAt == null) return;
     final key = 'family_settings_cleared_$owner';

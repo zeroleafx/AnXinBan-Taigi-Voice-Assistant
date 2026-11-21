@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'family_cloud.dart';
+import 'family_demo_store.dart';
 import 'app_theme.dart';
 import 'home_page.dart';
 import 'welcome_page.dart';
@@ -19,14 +20,22 @@ class _StartupPageState extends State<StartupPage>
     duration: const Duration(milliseconds: 2300),
   );
   bool started = false;
-  late final Future<bool> paired;
+  late final Future<Widget> landingPage;
 
   @override
   void initState() {
     super.initState();
-    paired = FamilyCloud.available
-        ? FamilyCloud().shouldOpenRecorder()
-        : Future.value(false);
+    landingPage = resolveLandingPage();
+  }
+
+  Future<Widget> resolveLandingPage() async {
+    if (await FamilyDemoStore().prefersStandaloneRecorder) {
+      return const HomePage(useFamilySettings: false);
+    }
+    if (FamilyCloud.available && await FamilyCloud().shouldOpenRecorder()) {
+      return const HomePage();
+    }
+    return const WelcomePage();
   }
 
   @override
@@ -47,8 +56,8 @@ class _StartupPageState extends State<StartupPage>
   }
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<bool>(
-    future: paired,
+  Widget build(BuildContext context) => FutureBuilder<Widget>(
+    future: landingPage,
     builder: (context, snapshot) => AnimatedBuilder(
       animation: animation,
       builder: (context, _) =>
@@ -62,9 +71,7 @@ class _StartupPageState extends State<StartupPage>
                     ? Duration.zero
                     : const Duration(milliseconds: 360),
                 curve: Curves.easeInOut,
-                child: snapshot.data == true
-                    ? const HomePage()
-                    : const WelcomePage(),
+                child: snapshot.data ?? const WelcomePage(),
                 builder: (context, opacity, child) => IgnorePointer(
                   ignoring: opacity < 1,
                   child: Opacity(opacity: opacity, child: child),
