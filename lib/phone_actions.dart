@@ -215,7 +215,7 @@ class DevicePhoneActions implements PhoneActions {
       _open(Uri.https('www.google.com', '/search', {'q': query}), _app);
 
   @override
-  Future<LocationResult> locate() async {
+  Future<LocationResult> locate({bool freshOnly = false}) async {
     try {
       if (!await geolocator.Geolocator.isLocationServiceEnabled()) {
         return const LocationOff();
@@ -228,7 +228,7 @@ class DevicePhoneActions implements PhoneActions {
           permission == geolocator.LocationPermission.deniedForever) {
         return const LocationDenied();
       }
-      final position = await _position();
+      final position = await _position(freshOnly);
       if (position == null) return const LocationUnavailable();
       return LocationFound(
         Place(
@@ -242,7 +242,7 @@ class DevicePhoneActions implements PhoneActions {
     }
   }
 
-  Future<geolocator.Position?> _position() async {
+  Future<geolocator.Position?> _position(bool freshOnly) async {
     try {
       return await geolocator.Geolocator.getCurrentPosition(
         locationSettings: const geolocator.LocationSettings(
@@ -252,6 +252,7 @@ class DevicePhoneActions implements PhoneActions {
       );
     } on TimeoutException {
       // Indoors a fresh fix can take too long; a recent one beats none.
+      if (freshOnly) return null;
       return geolocator.Geolocator.getLastKnownPosition();
     }
   }
