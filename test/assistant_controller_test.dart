@@ -426,6 +426,16 @@ void main() {
       expect(shown().detail, '「我晚一點到」');
     });
 
+    for (final app in ['LINE', 'YouTube', 'Facebook']) {
+      test('opening $app offline shows the network prompt', () async {
+        phone.offline = true;
+        await assistant.handle('打開$app');
+        await tap('確認');
+        expect(phone.opened, isEmpty);
+        expect(shown().title, '手機目前沒有網路連線');
+      });
+    }
+
     test('an offline phone explains why LINE cannot send', () async {
       phone.offline = true;
       await assistant.handle('用LINE跟女兒說我到了');

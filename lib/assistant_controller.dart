@@ -245,6 +245,12 @@ class AssistantController extends ChangeNotifier {
     final needsNetwork =
         command is VideoSearchCommand ||
         command is WeatherCommand ||
+        command is OpenAppCommand &&
+            const {
+              PhoneApp.line,
+              PhoneApp.youtube,
+              PhoneApp.facebook,
+            }.contains(command.app) ||
         command is SendMessageCommand && command.viaLine;
     if (needsNetwork && await actions.isOffline()) {
       return _problem(
