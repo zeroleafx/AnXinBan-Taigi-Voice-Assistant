@@ -26,6 +26,10 @@ class FakePhone implements PhoneActions {
   /// What the contact picker returns; null means it was cancelled.
   ContactEntry? picked;
   LocationResult location = const LocationFound(home);
+  bool offline = false;
+  @override
+  Future<bool> isOffline() async => offline;
+
   bool hasLine = true;
   bool canDial = true;
   bool canText = true;
