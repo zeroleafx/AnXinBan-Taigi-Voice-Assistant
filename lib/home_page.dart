@@ -98,6 +98,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (widget.useFamilySettings &&
         widget.assistant == null &&
         FamilyCloud.available) {
+      unawaited(_syncFamily());
       _familyTimer = Timer.periodic(
         const Duration(seconds: 30),
         (_) => unawaited(_syncFamily()),
@@ -114,8 +115,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
     _syncingFamily = true;
     try {
-      await FamilyCloud().pull().timeout(const Duration(seconds: 10));
-      if (mounted) await _initializeFamilySettings();
+      final paired = await FamilyCloud().pull().timeout(
+        const Duration(seconds: 10),
+      );
+      if (!mounted) return;
+      if (!paired) {
+        unawaited(_recording.cancel());
+        _voice?.stop();
+        await chooseMode();
+      } else {
+        await _initializeFamilySettings();
+      }
     } catch (_) {
     } finally {
       _syncingFamily = false;

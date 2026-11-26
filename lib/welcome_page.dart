@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'app_feedback.dart';
 import 'app_theme.dart';
+import 'family_cloud.dart';
 import 'family_demo.dart';
 import 'elder_pairing_page.dart';
 
@@ -8,6 +10,10 @@ class WelcomePage extends StatelessWidget {
   const WelcomePage({super.key});
 
   void _openRole(BuildContext context, {required bool isFamily}) {
+    if (!isFamily && FamilyCloud.available && FamilyCloud().hasFamilyAccount) {
+      showAppFeedback(context, '請先進入家人模式並登出，再使用長輩模式');
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => isFamily
