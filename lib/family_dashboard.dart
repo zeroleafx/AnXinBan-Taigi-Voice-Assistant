@@ -1,3 +1,7 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'welcome_page.dart';
+
 import 'app_feedback.dart';
 
 import 'dart:async';
@@ -203,7 +207,14 @@ class _FamilyDashboardState extends State<FamilyDashboard>
           ],
           onSelected: (logout) async {
             if (!logout) {
-              await Navigator.of(context).maybePop();
+              final navigator = Navigator.of(context);
+              if (navigator.canPop()) {
+                await navigator.maybePop();
+              } else {
+                await navigator.pushReplacement(
+                  MaterialPageRoute<void>(builder: (_) => const WelcomePage()),
+                );
+              }
               return;
             }
             final confirmed = await showDialog<bool>(
@@ -215,12 +226,19 @@ class _FamilyDashboardState extends State<FamilyDashboard>
               ),
             );
             if (confirmed != true || !mounted) return;
+            final navigator = Navigator.of(this.context);
             setState(() => busy = true);
             try {
               await drafts.prune(cloud.user!, {});
               await FamilyDemoStore().write('pending', []);
               await FamilyDemoStore().write('applied', []);
-              await cloud.client.auth.signOut();
+              await cloud.client.auth.signOut(scope: SignOutScope.local);
+              if (navigator.mounted) {
+                navigator.pushAndRemoveUntil(
+                  MaterialPageRoute<void>(builder: (_) => const WelcomePage()),
+                  (_) => false,
+                );
+              }
             } catch (_) {
               if (mounted) {
                 showAppFeedback(this.context, '登出未完成，請再試一次');
@@ -542,7 +560,15 @@ class _ElderSettingsPageState extends State<ElderSettingsPage>
       setState(() => category = null);
       await WidgetsBinding.instance.endOfFrame;
     }
-    if (mounted) Navigator.pop(context);
+    if (!mounted) return;
+    if (active.isEmpty) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(builder: (_) => const WelcomePage()),
+        (_) => false,
+      );
+    } else {
+      Navigator.pop(context);
+    }
   }
 
   Widget action(

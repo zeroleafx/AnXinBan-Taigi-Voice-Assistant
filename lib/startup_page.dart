@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'family_cloud.dart';
 import 'family_demo_store.dart';
+import 'family_demo.dart';
 import 'app_theme.dart';
 import 'home_page.dart';
 import 'welcome_page.dart';
@@ -32,8 +33,23 @@ class _StartupPageState extends State<StartupPage>
     if (await FamilyDemoStore().prefersStandaloneRecorder) {
       return const HomePage(useFamilySettings: false);
     }
-    if (FamilyCloud.available && await FamilyCloud().shouldOpenRecorder()) {
-      return const HomePage();
+    if (FamilyCloud.available) {
+      final cloud = FamilyCloud();
+      if (cloud.hasFamilyAccount) {
+        final owner = cloud.user;
+        try {
+          final links = await cloud.links().timeout(const Duration(seconds: 5));
+          if (owner != null &&
+              cloud.user == owner &&
+              links.any((link) => link['owner_id'] == owner)) {
+            return const FamilyDemoPage(isFamily: true);
+          }
+        } catch (_) {
+          // The role picker remains available when pairing cannot be verified.
+        }
+      } else if (await cloud.shouldOpenRecorder()) {
+        return const HomePage();
+      }
     }
     return const WelcomePage();
   }

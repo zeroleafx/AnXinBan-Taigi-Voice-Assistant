@@ -76,6 +76,9 @@ class FamilyCloud {
   bool get hasFamilyAccount =>
       client.auth.currentUser != null && !client.auth.currentUser!.isAnonymous;
   Future<void> ensureElderIdentity() async {
+    if (hasFamilyAccount) {
+      throw const FamilyPublishException('請先登出家人帳號，再使用長輩模式');
+    }
     if (client.auth.currentSession == null) {
       await client.auth.signInAnonymously();
     }
@@ -83,8 +86,18 @@ class FamilyCloud {
 
   Future<void> login() async {
     if (hasFamilyAccount) return;
-    if (client.auth.currentUser?.isAnonymous == true) {
-      throw const FamilyPublishException('此裝置已用於長輩配對，請使用家人的手機登入管理設定');
+    final elder = client.auth.currentUser;
+    if (elder != null && elder.isAnonymous) {
+      final pairings = await links().timeout(const Duration(seconds: 5));
+      if (user != elder.id) return;
+      if (pairings.any((link) => link['elder_id'] == elder.id)) {
+        throw const FamilyPublishException('請先在原家人端解除這支手機的長輩配對，再登入家人模式');
+      }
+      final store = FamilyDemoStore();
+      await store.write('applied', []);
+      await store.preferences.setString('paired_elder_user', '');
+      if (user != elder.id) return;
+      await client.auth.signOut(scope: SignOutScope.local);
     }
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       await _androidGoogleReady;
@@ -236,21 +249,23 @@ class FamilyCloud {
     ) as num).toInt();
   }
 
-  Future<void> pull() async {
-    if (user == null) return;
+  Future<bool> pull() async {
+    final elderId = user;
+    if (elderId == null) return false;
     final matches = (await links())
-        .where((e) => e['elder_id'] == user)
+        .where((e) => e['elder_id'] == elderId)
         .toList();
+    if (user != elderId) throw StateError('Elder session changed during sync');
     if (matches.isEmpty) {
       await FamilyDemoStore().preferences.setString('paired_elder_user', '');
       await FamilyDemoStore().write('applied', []);
-      return;
+      return false;
     }
-    await FamilyDemoStore().preferences.setString('paired_elder_user', user!);
+    await FamilyDemoStore().preferences.setString('paired_elder_user', elderId);
     final data = await elderSnapshot(matches.single['id'] as String);
     if (data == null) {
       await FamilyDemoStore().write('applied', []);
-      return;
+      return true;
     }
     final entries = (data['entries'] as List)
         .map((e) => Map<String, String>.from(e as Map))
@@ -260,6 +275,7 @@ class FamilyCloud {
       'ack_elder_settings',
       params: {'link_id': matches.single['id'], 'version': data['revision']},
     );
+    return true;
   }
 
   Future<Map<String, dynamic>?> elderSnapshot(String linkId) => client
