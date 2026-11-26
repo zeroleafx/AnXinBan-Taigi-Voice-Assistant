@@ -426,6 +426,14 @@ void main() {
       expect(shown().detail, '「我晚一點到」');
     });
 
+    test('an offline phone explains why LINE cannot send', () async {
+      phone.offline = true;
+      await assistant.handle('用LINE跟女兒說我到了');
+      await tap('確認');
+      expect(phone.lineShares, isEmpty);
+      expect(shown().title, '手機目前沒有網路連線');
+    });
+
     test('a LINE message lets the person pick who gets it', () async {
       await assistant.handle('用LINE跟女兒說我到了');
       if (buttons().contains('確認')) await tap('確認');

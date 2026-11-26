@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
@@ -25,6 +26,7 @@ class ContactsAccess {
 /// return false when the phone could not do it (for example, the app is not
 /// installed).
 abstract interface class PhoneActions {
+  Future<bool> isOffline();
   Future<bool> openApp(PhoneApp app);
 
   /// Opens the installed app that [name] most likely means and returns the
@@ -65,6 +67,20 @@ class DevicePhoneActions implements PhoneActions {
 
   bool get _iOS => defaultTargetPlatform == TargetPlatform.iOS;
   bool get _android => defaultTargetPlatform == TargetPlatform.android;
+
+  @override
+  Future<bool> isOffline() async {
+    try {
+      final connections = await Connectivity().checkConnectivity().timeout(
+        const Duration(seconds: 2),
+      );
+      return connections.length == 1 &&
+          connections.single == ConnectivityResult.none;
+    } catch (_) {
+      // An unavailable network status should not prevent opening another app.
+      return false;
+    }
+  }
 
   @override
   Future<bool> openApp(PhoneApp app) async {

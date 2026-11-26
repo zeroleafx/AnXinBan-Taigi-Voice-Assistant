@@ -242,6 +242,17 @@ class AssistantController extends ChangeNotifier {
       }
     }
 
+    final needsNetwork =
+        command is VideoSearchCommand ||
+        command is WeatherCommand ||
+        command is SendMessageCommand && command.viaLine;
+    if (needsNetwork && await actions.isOffline()) {
+      return _problem(
+        Icons.wifi_off_rounded,
+        '手機目前沒有網路連線',
+        detail: '請連上 Wi-Fi 或開啟行動數據後再試一次',
+      );
+    }
     switch (command) {
       case OpenAppCommand(:final app):
         return await actions.openApp(app)
@@ -518,12 +529,17 @@ class AssistantController extends ChangeNotifier {
           ? _done(Icons.sms_rounded, '把位置傳給 ${to.name}', detail: place.label)
           : _cannotText();
     }
-    if (await actions.shareOnLine(text)) {
+    final offline = await actions.isOffline();
+    if (!offline && await actions.shareOnLine(text)) {
       return _done(Icons.send_rounded, '選一位朋友傳位置', detail: place.label);
     }
     // No LINE on this phone: a text message with no one filled in.
     return await actions.composeSms(body: text)
-        ? _done(Icons.sms_rounded, '選一位聯絡人傳位置', detail: place.label)
+        ? _done(
+            Icons.sms_rounded,
+            '選一位聯絡人傳位置',
+            detail: offline ? '目前沒有網路，已改用簡訊' : place.label,
+          )
         : _cannotText();
   }
 
