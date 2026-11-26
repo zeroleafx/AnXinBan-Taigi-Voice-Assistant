@@ -13,6 +13,8 @@ import 'contact_matcher.dart';
 import 'emergency_store.dart';
 import 'family_demo_store.dart';
 import 'family_cloud.dart';
+import 'reminder_notifications.dart';
+import 'reminder_sound.dart';
 import 'welcome_page.dart';
 import 'voice_command.dart';
 import 'mic_button.dart';
@@ -87,6 +89,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _recording.addListener(_recordingChanged);
     _assistant.addListener(_refresh);
     _voice?.addListener(_refresh);
+    if (_voice case final voice? when widget.voice == null) {
+      unawaited(_restoreVoice(voice));
+    }
     _model.addListener(_modelChanged);
     unawaited(_model.refresh());
     WidgetsBinding.instance.addObserver(this);
@@ -117,14 +122,138 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
+  final _reminders = ValueNotifier<List<Map<String, String>>>([]);
+
+  void _showReminders() {
+    showDialog<void>(
+      context: context,
+      builder: (context) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        backgroundColor: AppColors.bone,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        child: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 12, 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '家人提醒',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: AppColors.ink,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: '關閉',
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+              ),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: ListenableBuilder(
+                    listenable: Listenable.merge([_reminders, _voice]),
+                    builder: (_, _) => _reminders.value.isEmpty
+                        ? const Text('目前沒有家人發布的提醒事項')
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              for (final entry in _reminders.value)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: Card(
+                                    margin: EdgeInsets.zero,
+                                    color: AppColors.card,
+                                    elevation: 2,
+                                    clipBehavior: Clip.antiAlias,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: ListTile(
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 12,
+                                          ),
+                                      leading: const Icon(
+                                        Icons.notifications_outlined,
+                                        color: AppColors.leaf,
+                                      ),
+                                      trailing:
+                                          !(_voice?.enabled ?? false) ||
+                                              (entry['value'] ?? '')
+                                                  .trim()
+                                                  .isEmpty
+                                          ? null
+                                          : const Icon(
+                                              Icons.volume_up_outlined,
+                                              color: AppColors.leaf,
+                                              semanticLabel: '台語朗讀說明',
+                                            ),
+                                      onTap:
+                                          !(_voice?.enabled ?? false) ||
+                                              (entry['value'] ?? '')
+                                                  .trim()
+                                                  .isEmpty
+                                          ? null
+                                          : () =>
+                                                _readReminder(entry['value']!),
+                                      title: Text(
+                                        entry['label'] ?? '',
+                                        style: const TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      subtitle: Text(
+                                        [
+                                          if ((entry['value'] ?? '').isNotEmpty)
+                                            entry['value']!,
+                                          if ((entry['time'] ?? '').isNotEmpty)
+                                            "${entry['time']} · ${entry['repeat'] == 'daily' ? '每天' : '單次'}",
+                                          if ((entry['location'] ?? '')
+                                              .isNotEmpty)
+                                            entry['location']!,
+                                        ].join('\n'),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _initializeFamilySettings() async {
     try {
       final entries = await FamilyDemoStore().read('applied');
       if (!mounted) return;
+      unawaited(ReminderNotifications.sync(entries));
+      _reminders.value = entries
+          .where((entry) => entry['kind'] == 'reminder')
+          .toList();
       _assistant.familyContacts.clear();
       _assistant.familyPlaces.clear();
       for (final entry in entries) {
-        final aliases = entry['aliases']!
+        final aliases = (entry['aliases'] ?? '')
             .split(RegExp('[,，]'))
             .map((s) => s.trim())
             .where((s) => s.isNotEmpty)
@@ -178,11 +307,48 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   ModelNetwork get _network => _model.status?.network ?? ModelNetwork.none;
 
+  Future<void> _readReminder(String description) async {
+    if (!(_voice?.enabled ?? false)) return;
+    final words = await reminderPronunciation(description);
+    if (!mounted) return;
+    if (words == null || _voice == null) {
+      showAppFeedback(context, '目前無法用台語朗讀這則提醒的說明');
+      return;
+    }
+    _voice?.say(words);
+  }
+
+  static const _voicePreference = 'taigi_voice_enabled';
+
+  Future<void> _restoreVoice(TaigiVoice voice) async {
+    _preparingVoice = true;
+    try {
+      final enabled = await DemoPreferences().getInt(_voicePreference) == 1;
+      if (!mounted || !enabled) return;
+      final result = await voice.prepare(ModelNetwork.none);
+      if (mounted && result == VoiceSetup.ready) voice.setEnabled(true);
+    } catch (_) {
+      // The user can still turn on voice from the home screen.
+    } finally {
+      if (mounted) setState(() => _preparingVoice = false);
+    }
+  }
+
+  Future<void> _saveVoicePreference(bool enabled) async {
+    if (widget.voice != null) return;
+    try {
+      await DemoPreferences().setInt(_voicePreference, enabled ? 1 : 0);
+    } catch (_) {
+      if (mounted) showAppFeedback(context, '無法記住語音模式設定');
+    }
+  }
+
   Future<void> _toggleVoice() async {
     final voice = _voice;
     if (voice == null || _preparingVoice) return;
     if (voice.enabled) {
       voice.setEnabled(false);
+      await _saveVoicePreference(false);
       return;
     }
 
@@ -232,6 +398,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       }
       if (result == VoiceSetup.ready) {
         voice.setEnabled(true);
+        await _saveVoicePreference(true);
       } else {
         showAppFeedback(context, '台語朗讀準備失敗，請再試一次。');
       }
@@ -285,6 +452,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _familyTimer?.cancel();
+    _reminders.dispose();
     _recording.removeListener(_refresh);
     _recording.removeListener(_recordingChanged);
     _assistant.removeListener(_refresh);
@@ -394,6 +562,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
                 child: _TopBar(
+                  onReminders: widget.useFamilySettings ? _showReminders : null,
                   onChooseMode: widget.useFamilySettings || _busy
                       ? null
                       : chooseMode,
@@ -449,6 +618,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 return Column(
                   children: [
                     _TopBar(
+                      onReminders: widget.useFamilySettings
+                          ? _showReminders
+                          : null,
                       onChooseMode: widget.useFamilySettings || _busy
                           ? null
                           : chooseMode,
@@ -737,8 +909,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onHelp, this.onChooseMode});
+  const _TopBar({required this.onHelp, this.onReminders, this.onChooseMode});
   final VoidCallback? onChooseMode;
+  final VoidCallback? onReminders;
 
   /// Opens the help card. Always on screen, so help never depends on speech.
   final VoidCallback? onHelp;
@@ -774,6 +947,12 @@ class _TopBar extends StatelessWidget {
             ),
           ),
         ),
+        if (onReminders != null)
+          IconButton(
+            tooltip: '家人提醒',
+            onPressed: onReminders,
+            icon: const Icon(Icons.notifications_outlined),
+          ),
         if (onChooseMode != null)
           IconButton(
             tooltip: '切換模式',

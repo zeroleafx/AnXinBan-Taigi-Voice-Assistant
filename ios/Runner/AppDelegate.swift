@@ -1,6 +1,7 @@
 import AVFoundation
 import Flutter
 import UIKit
+import UserNotifications
 import Network
 import AuthenticationServices
 
@@ -25,6 +26,7 @@ import AuthenticationServices
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    UNUserNotificationCenter.current().delegate = self
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

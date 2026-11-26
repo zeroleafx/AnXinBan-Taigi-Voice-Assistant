@@ -1,0 +1,3 @@
+reminder_readings.json is an adapted Taiwanese pronunciation dictionary distributed under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
+Sources: Taiwanese-Chinese Online Dictionary (http://ip194097.ntcu.edu.tw/ungian/soannteng/chil/Taihoa.asp) and iTaigi Chinese-Taiwanese Comparison Dictionary (https://itaigi.tw/), via ChhoeTaigi (https://github.com/ChhoeTaigi/ChhoeTaigiDatabase) and Taibun (https://github.com/andreihar/taibun).
+Changes: selected Han-character entries and converted readings to lowercase POJ.

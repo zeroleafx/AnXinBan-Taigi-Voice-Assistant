@@ -54,6 +54,9 @@ dependencies:
   latlong2: ^0.10.1
   google_sign_in: ^7.2.0
   connectivity_plus: ^7.3.1
+  flutter_local_notifications: ^21.0.0
+  timezone: ^0.11.2
+  flutter_timezone: ^5.1.1
 
 dev_dependencies:
   flutter_test:
@@ -76,6 +79,8 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  assets:
+    - assets/taigi/
   fonts:
     - family: NotoSansTC
       fonts:

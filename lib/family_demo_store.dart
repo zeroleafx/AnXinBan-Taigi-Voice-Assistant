@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'reminder_notifications.dart';
+
 import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -10,8 +12,10 @@ class FamilyDemoStore {
   Future<bool> get prefersStandaloneRecorder async =>
       await preferences.getInt('standalone_recorder') == 1;
 
-  Future<void> setStandaloneRecorder(bool enabled) =>
-      preferences.setInt('standalone_recorder', enabled ? 1 : 0);
+  Future<void> setStandaloneRecorder(bool enabled) async {
+    await preferences.setInt('standalone_recorder', enabled ? 1 : 0);
+    if (enabled) await ReminderNotifications.sync([]);
+  }
 
   Future<void> reconcileCloudDeletion(String owner, String? clearedAt) async {
     if (clearedAt == null) return;
@@ -29,8 +33,11 @@ class FamilyDemoStore {
         .toList();
   }
 
-  Future<void> write(String copy, List<Map<String, String>> entries) =>
-      preferences.setString('family_demo_$copy', jsonEncode(entries));
+  Future<void> write(String copy, List<Map<String, String>> entries) async {
+    await preferences.setString('family_demo_$copy', jsonEncode(entries));
+    if (copy == 'applied') await ReminderNotifications.sync(entries);
+  }
+
   Future<void> apply() async {
     await write('applied', await read('pending'));
     await preferences.setString(
