@@ -81,6 +81,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/taigi/
+    - assets/fuzzy/
   fonts:
     - family: NotoSansTC
       fonts:

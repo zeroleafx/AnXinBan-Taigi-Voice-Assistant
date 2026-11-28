@@ -5,6 +5,8 @@
 /// both, plus a few Simplified forms.
 library;
 
+import 'sound_table.dart';
+
 enum PhoneApp { line, youtube, facebook, maps, messages }
 
 extension PhoneAppLabel on PhoneApp {
@@ -190,6 +192,84 @@ VoiceCommand parseVoiceCommand(String transcript, {bool torchOn = false}) {
     return const FlashlightCommand(on: false);
   }
   return const UnknownCommand();
+}
+
+/// What a transcript that [parseVoiceCommand] cannot place most likely
+/// meant, or null. A word that sounds like one the assistant listens for is
+/// read as that word: "開手店筒" is 開手電筒, "我跌到了" is 我跌倒了, and
+/// "開來" is 開賴.
+///
+/// The result is a guess. Ask before calling anyone or changing a setting
+/// on it.
+VoiceCommand? guessVoiceCommand(
+  String transcript,
+  SoundTable sounds, {
+  bool torchOn = false,
+}) {
+  bool unplaced(VoiceCommand command) =>
+      command is UnknownCommand || command is OpenNamedAppCommand;
+
+  final heard = normalizeTranscript(transcript);
+  final asWritten = parseVoiceCommand(heard, torchOn: torchOn);
+  if (!unplaced(asWritten)) return null;
+  // An app's own name, however short.
+  if (asWritten case OpenNamedAppCommand(:final name)) {
+    for (final MapEntry(key: app, value: names) in _apps.entries) {
+      if (names.any((known) => sounds.alike(name, known) != null)) {
+        return OpenAppCommand(app);
+      }
+    }
+  }
+
+  final said = heard.runes.toList();
+  final fixes = <({int start, List<int> word, int cost})>[];
+  for (final known in _soundWords) {
+    final word = known.runes.toList();
+    for (var start = 0; start + word.length <= said.length; start++) {
+      final stretch = String.fromCharCodes(said, start, start + word.length);
+      final cost = stretch == known ? null : sounds.alike(stretch, known);
+      if (cost != null) fixes.add((start: start, word: word, cost: cost));
+    }
+  }
+  // The surest fixes first, and of those the longest words.
+  fixes.sort((a, b) {
+    final surer = a.cost.compareTo(b.cost);
+    return surer != 0 ? surer : b.word.length.compareTo(a.word.length);
+  });
+
+  // Every fix that fits beside the surer ones, then each one alone.
+  final together = <({int start, List<int> word, int cost})>[];
+  for (final fix in fixes) {
+    final end = fix.start + fix.word.length;
+    final overlaps = together.any(
+      (other) =>
+          fix.start < other.start + other.word.length && other.start < end,
+    );
+    if (!overlaps) together.add(fix);
+  }
+  for (final attempt in [
+    if (together.length > 1) together,
+    for (final fix in fixes) [fix],
+  ]) {
+    final mended = [...said];
+    for (final fix in attempt) {
+      mended.setRange(fix.start, fix.start + fix.word.length, fix.word);
+    }
+    final command = parseVoiceCommand(
+      String.fromCharCodes(mended),
+      torchOn: torchOn,
+    );
+    if (command case SendMessageCommand(:final name, :final body)) {
+      // The message itself stays as it was said, capitals and commas too.
+      return SendMessageCommand(
+        name: name,
+        body: _Spoken(transcript).tail(body.length),
+        viaLine: command.viaLine,
+      );
+    }
+    if (!unplaced(command)) return command;
+  }
+  return null;
 }
 
 /// Off wins over on, so "不要開" switches off. Null when neither is said.
@@ -400,6 +480,20 @@ final _openNamed = [
   (RegExp(r'^(?:打開|開啟|啟動|點開|進入|叫出)(?:一下)?(?:我的|手機的)?(.{1,12})$'), true),
   (RegExp(r'^(.{1,12}?)(?:打開|開啟|開起來)$'), true),
   (RegExp(r'^開(?:一下)?(?:我的)?(.{1,12})$'), false),
+];
+
+/// Words [guessVoiceCommand] knows by sound. Only words that are unlikely to
+/// come up by chance: 天氣 is left out because "明天起床" has "天起" in
+/// it, which sounds the same, and 定位 because of 訂位.
+final _soundWords = [
+  // Missing a call for help is worse than asking once too often.
+  '救命', '救我', '救人', '求救', '跌倒', '摔倒', '跋倒', '爬不起來', '站不起來', //
+  '很緊急', '緊急狀況', '緊急情況', '緊急事件', _contactWord,
+  '救護車', '報警', '叫警察', '找警察', '警察局', '派出所',
+  '手電筒', '手電仔', '閃光燈',
+  '打電話', '電話', '位置', '導航', '帶我去', '帶我到', '載我去', '載我到',
+  '農曆', '舊曆', '陰曆', '農民曆', '禮拜幾', '星期幾',
+  for (final names in _apps.values) ...names.where((name) => name.length > 1),
 ];
 
 const _contactWord = '緊急聯絡人';

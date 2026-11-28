@@ -56,6 +56,47 @@ commands above asks for it (`NSLocationWhenInUseUsageDescription` on iOS,
 `ACCESS_FINE_LOCATION` and `ACCESS_COARSE_LOCATION` on Android); the phone's
 own geocoder turns it into an address.
 
+## Names and words that sound alike
+
+Breeze writes a name in whichever characters fit its sound, so 阿明 can arrive
+as 「阿銘」 and 手電筒 as 「手電桶」. When the words fit nothing as written,
+the assistant goes by how they sound (`lib/sound_table.dart`):
+
+| Heard | Understood as |
+|---|---|
+| 打給阿銘、打給志銘、傳簡訊給美齡 | The contacts 阿明, 陳志明 and 陳美玲 |
+| 打給阿木 | 阿母, also when she is saved as 媽媽 |
+| 開來、打開優吐、打開瞎皮 | LINE, YouTube and, on Android, 蝦皮購物 |
+| 帶我去診鎖 | The address the family saved for 診所 |
+| 開手店筒、導行到台北車站、打店話給阿明 | 開手電筒, 導航到台北車站, 打電話給阿明 |
+| 我跌到了、就我、快叫九護車 | A call for help |
+
+- Two characters sound alike when Taiwanese or Mandarin reads them the same
+  (明 and 銘), or nearly the same: 電 tiān and 店 tiàm in Taiwanese, 新 xin and
+  星 xing or 志 zhi and 字 zi in Mandarin. Tones are ignored. A word may have
+  only one character that is merely close.
+- A name may be written in other characters throughout (「智銘」 for 志明). An
+  everyday word may differ in one character, or two from four characters on
+  (「手電桶」, not 「首店桶」), and only words that are unlikely to come up by
+  chance are looked for: see `_soundWords` in `lib/voice_command.dart`.
+- Anything that fits as written is done as before; sound only fills in when
+  nothing does. Among contacts it also adds anyone closer: for 「阿銘」, 阿明
+  is offered ahead of 王銘傳, who merely has one of the characters, and the
+  person picks.
+- A guess never calls anyone or changes a setting by itself. Calls and
+  messages already ask first. A guessed call for help shows the help card
+  without dialing, a guessed 119 or 110 asks first, and a guessed emergency
+  contact is saved only after a yes.
+
+The readings are in `assets/fuzzy/char_readings.txt` (89 KB): Taiwanese from
+the dictionary in `assets/taigi/`, Mandarin from
+[pypinyin](https://github.com/mozillazg/python-pinyin). To rebuild the table:
+
+```sh
+pip install pypinyin opencc-python-reimplemented
+python3 tool/build_char_readings.py
+```
+
 ## Spoken replies in Taiwanese
 
 On Android and iOS, enabling 「開啟語音模式」 reads new cards aloud in Taiwanese, including

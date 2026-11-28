@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:an_xin_ban/voice_command.dart';
 
+import 'support/sounds.dart';
+
 Matcher opens(PhoneApp app) =>
     isA<OpenAppCommand>().having((c) => c.app, 'app', app);
 Matcher calls(String name) =>
@@ -231,5 +233,91 @@ void main() {
     expect(normalizeTranscript('幫我 開 LINE！'), '幫我開line');
     expect(spokenDigits('零九一二'), '0912');
     expect(spokenDigits('阿明'), isNull);
+  });
+
+  group('guessing by sound', () {
+    VoiceCommand? guess(String transcript, {bool torchOn = false}) =>
+        guessVoiceCommand(transcript, shippedSounds, torchOn: torchOn);
+    void expectGuess(String transcript, Matcher matcher) {
+      final asWritten = parseVoiceCommand(transcript);
+      expect(
+        asWritten,
+        anyOf(isA<UnknownCommand>(), isA<OpenNamedAppCommand>()),
+        reason: '$transcript is understood as written',
+      );
+      expect(guess(transcript), matcher, reason: transcript);
+    }
+
+    test('a word that sounds like a known one is read as that word', () {
+      expectGuess('開手店筒', torch(on: true));
+      expectGuess('閃光登打開', torch(on: true));
+      expectGuess('打店話給阿明', calls('阿明'));
+      expectGuess('大電話給女兒', calls('女兒'));
+      expectGuess('導行到台北車站', goesTo('台北車站'));
+      expectGuess('代我去郵局', goesTo('郵局'));
+      expectGuess('今天星期己', date(lunar: false));
+      expectGuess('我的位址在哪裡', isA<WhereAmICommand>());
+      expectGuess('把我的位志傳給女兒', sharesWith('女兒'));
+      expectGuess('傳檢訊給阿明說我晚一點到', writes('阿明', '我晚一點到'));
+    });
+
+    test('a call for help is made out', () {
+      expectGuess('就我', isA<EmergencyCommand>());
+      expectGuess('我跌到了', isA<EmergencyCommand>());
+      expectGuess('我摔到了', isA<EmergencyCommand>());
+      expectGuess('快叫九護車', dials('119'));
+      expectGuess('找警查', dials('110'));
+      expectGuess('把女兒設成緊急連落人', setsContact('女兒'));
+      expectGuess('取消緊急連落人', isA<ClearEmergencyContactCommand>());
+    });
+
+    test('apps are known by the sound of their names', () {
+      expectGuess('開來', opens(PhoneApp.line));
+      expectGuess('打開來恩', opens(PhoneApp.line));
+      expectGuess('打開優吐', opens(PhoneApp.youtube));
+      expectGuess('開油罐', opens(PhoneApp.youtube));
+      expectGuess('上臉輸', opens(PhoneApp.facebook));
+      expectGuess('看減訊', opens(PhoneApp.messages));
+      expectGuess('打開信息', opens(PhoneApp.messages));
+      expectGuess('開地途', opens(PhoneApp.maps));
+    });
+
+    test('several words heard wrong are all put right', () {
+      expectGuess('打店話給緊急連落人', isA<EmergencyCommand>());
+    });
+
+    test('a message keeps its words as they were said', () {
+      expectGuess('傳檢訊給阿明說 我晚一點到，OK 嗎？', writes('阿明', '我晚一點到，OK 嗎？'));
+      expectGuess('傳檢訊給阿明', writes('阿明', ''));
+    });
+
+    test('what is understood as written is left alone', () {
+      for (final transcript in [
+        '幫我開LINE', '打給阿明', '開手電筒', '帶我去台北車站', '現在幾點', //
+        '救命', '傳簡訊給阿明說我晚一點到', '我想聽鄧麗君的歌', '',
+      ]) {
+        expect(guess(transcript), isNull, reason: transcript);
+      }
+      expect(guess('關掉', torchOn: true), isNull);
+    });
+
+    test('other apps keep their names', () {
+      for (final transcript in ['打開相機', '打開股票', '開冷氣', '開門']) {
+        expect(parseVoiceCommand(transcript), isA<OpenNamedAppCommand>());
+        expect(guess(transcript), isNull, reason: transcript);
+      }
+    });
+
+    test('everyday talk is not turned into a command', () {
+      for (final transcript in [
+        '今天心情不錯', '明天起床叫我', '幫我訂位', '我在小房間', '打擊犯罪', //
+        '大吉大利', '我想停車', '極度疲勞', '做個記號', '即日起開始',
+        '一百幾十塊', '活在當下', '洗臉梳頭', '收電費的來了', '他要娶老婆',
+        '這個位子有人坐嗎', '用手點一下', '我的眼鏡放在哪', '藥吃了沒',
+        '一朵花', '我的手機壞了', '明天的事明天再說', '把窗戶打開', '嗯嗯嗯',
+      ]) {
+        expect(guess(transcript), isNull, reason: transcript);
+      }
+    });
   });
 }

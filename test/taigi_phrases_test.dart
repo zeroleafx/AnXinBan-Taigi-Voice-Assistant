@@ -5,6 +5,7 @@ import 'package:an_xin_ban/contact_matcher.dart';
 import 'package:an_xin_ban/taigi_phrases.dart';
 
 import 'support/fake_phone.dart';
+import 'support/sounds.dart';
 
 /// Every symbol in facebook/mms-tts-nan's vocab.json. The model skips
 /// anything else; ⁿ (a nasal vowel) is skipped too, so it is checked apart.
@@ -226,6 +227,32 @@ void main() {
     test('the help card', () async {
       await assistant.showEmergency();
       expect(taigiSpeech(assistant.outcome!), 'Lí kám ū su-iàu lâng pang-bâng');
+    });
+
+    test('cards for what was made out by sound have words too', () async {
+      assistant.sounds = shippedSounds;
+      expect(await say('打給阿銘'), 'Lí beh khà tiān-ōe hō͘ i bô');
+      expect(
+        await say('把阿銘設成緊急聯絡人'),
+        'Lí beh kā i siat-tēng chò kín-kip liân-lo̍k-jîn bô',
+      );
+      for (final heard in ['我跌到了', '快叫九護車', '開來', '開手店筒', '取消緊急連落人']) {
+        expect(await say(heard), isNotNull, reason: heard);
+        for (final button in assistant.outcome!.buttons) {
+          await assistant.handle(heard);
+          await assistant.press(
+            assistant.outcome!.buttons.firstWhere(
+              (b) => b.label == button.label,
+            ),
+          );
+          final after = assistant.outcome!;
+          expect(
+            taigiSpeech(after),
+            isNotNull,
+            reason: '$heard [${button.label}] → ${after.title}',
+          );
+        }
+      }
     });
   });
 }

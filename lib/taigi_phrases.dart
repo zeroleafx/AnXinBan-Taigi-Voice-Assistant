@@ -164,6 +164,10 @@ final _patterns = [
   (RegExp(r'^要打給 .+ 嗎？$'), 'Lí beh khà tiān-ōe hō͘ i bô'),
   (RegExp(r'^要傳簡訊給 .+ 嗎？$'), 'Lí beh thoân kán-sìn hō͘ i bô'),
   (RegExp(r'^要把位置傳給 .+ 嗎？$'), 'Lí beh kā ūi-tì thoân hō͘ i bô'),
+  (
+    RegExp(r'^要把 .+ 設成緊急聯絡人嗎？$'),
+    'Lí beh kā i siat-tēng chò kín-kip liân-lo̍k-jîn bô',
+  ),
   (RegExp(r'^已打開'), _opened),
   (RegExp(r'^手機裡找不到'), _noSuchApp),
   (RegExp(r'^(撥打|打給) '), _dialing),
