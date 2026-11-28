@@ -21,6 +21,7 @@ import 'mic_button.dart';
 import 'web_transcription.dart';
 import 'phone_actions.dart';
 import 'recording_controller.dart';
+import 'sound_table.dart';
 import 'speech_model.dart';
 import 'taigi_phrases.dart';
 import 'taigi_tts_stub.dart' if (dart.library.io) 'taigi_tts_native.dart';
@@ -75,6 +76,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         );
     _voice = widget.voice;
     if (widget.assistant == null) {
+      // Until the table is read, names must match as written.
+      unawaited(SoundTable.load().then((table) => _assistant.sounds = table));
       if (widget.useFamilySettings) unawaited(_initializeFamilySettings());
       final synthesizer = _voice == null ? createTaigiSynthesizer() : null;
       final player = _voice == null ? createVoicePlayer() : null;

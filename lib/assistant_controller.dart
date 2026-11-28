@@ -5,6 +5,7 @@ import 'emergency_store.dart';
 import 'lunar_date.dart';
 import 'phone_actions.dart';
 import 'place.dart';
+import 'sound_table.dart';
 import 'voice_command.dart';
 
 enum OutcomeTone { done, info, problem }
@@ -78,6 +79,11 @@ class AssistantController extends ChangeNotifier {
   ContactEntry? emergencyContact;
   List<ContactEntry> familyContacts = [];
   Map<String, String> familyPlaces = {};
+
+  /// How characters sound, to make out a name or a word that Breeze wrote
+  /// in other characters ("阿銘" for 阿明). Without it, everything has to
+  /// match as written.
+  SoundTable? sounds;
   bool working = false;
 
   /// Whether this app last switched the flashlight on, so it can still be
@@ -102,7 +108,13 @@ class AssistantController extends ChangeNotifier {
     final heard = transcript.trim();
     return _work(() {
       _heard = heard;
-      return _run(parseVoiceCommand(heard, torchOn: torchOn));
+      final table = sounds;
+      final guess = table == null
+          ? null
+          : guessVoiceCommand(heard, table, torchOn: torchOn);
+      return guess == null
+          ? _run(parseVoiceCommand(heard, torchOn: torchOn))
+          : _run(guess, guessed: true);
     }, fresh: true);
   }
 
@@ -209,12 +221,16 @@ class AssistantController extends ChangeNotifier {
     );
   }
 
+  /// [guessed] is for a command made out by sound from words that did not
+  /// say it as written. Such a command calls no one and changes no setting
+  /// before the person has agreed.
   Future<AssistantOutcome?> _run(
     VoiceCommand command, {
     bool confirmed = false,
+    bool guessed = false,
   }) async {
     if (command case NavigateCommand(:final place)) {
-      final address = familyPlaces[normalizeTranscript(place)];
+      final address = _familyPlace(normalizeTranscript(place));
       if (address != null) command = NavigateCommand(address);
     }
     if (!confirmed) {
@@ -222,7 +238,7 @@ class AssistantController extends ChangeNotifier {
         OpenAppCommand(:final app) => ('要開啟 ${app.label} 嗎？', app.label),
         OpenNamedAppCommand(:final name) => ('要開啟 $name 嗎？', name),
         DialNumberCommand(:final number)
-            when !['119', '110', '112'].contains(number) =>
+            when guessed || !['119', '110', '112'].contains(number) =>
           ('要撥打電話嗎？', number),
         NavigateCommand(:final place) => ('要開啟導航嗎？', place),
         SendMessageCommand(viaLine: true, :final body) => (
@@ -313,13 +329,21 @@ class AssistantController extends ChangeNotifier {
         return _withContact(name, '要傳給哪一位？', (contact) => _text(contact, body));
       case EmergencyCommand():
         final contact = emergencyContact;
-        final dialed = contact != null && await actions.dial(contact.number);
+        final dialed =
+            !guessed && contact != null && await actions.dial(contact.number);
         return _help(dialed: dialed);
       case SetEmergencyContactCommand(name: ''):
         return _contactCard();
       case SetEmergencyContactCommand(:final name):
-        return _withContact(name, '要設定哪一位？', _saveContact);
+        return _withContact(
+          name,
+          '要設定哪一位？',
+          guessed ? _askToSave : _saveContact,
+          unsure: _askToSave,
+        );
       case ClearEmergencyContactCommand():
+        // The card shows who it is and has the button to take them off.
+        if (guessed) return _contactCard();
         await store.save(null);
         emergencyContact = null;
         return _done(Icons.person_off_rounded, '已取消緊急聯絡人');
@@ -356,24 +380,42 @@ class AssistantController extends ChangeNotifier {
 
   /// Finds [name] in the contacts and continues with that person. Asks which
   /// one when several fit.
+  ///
+  /// When no one is called [name] as written, it goes by sound ("阿銘" for
+  /// 阿明). [then] must ask before it acts on such a guess; if it does not,
+  /// pass an [unsure] that does.
   Future<AssistantOutcome?> _withContact(
     String name,
     String question,
-    Future<AssistantOutcome?> Function(ContactEntry contact) then,
-  ) async {
-    final saved = matchContacts(name, familyContacts, limit: 3);
-    if (saved.length == 1) return then(saved.single);
-    if (saved.length > 1) {
+    Future<AssistantOutcome?> Function(ContactEntry contact) then, {
+    Future<AssistantOutcome?> Function(ContactEntry contact)? unsure,
+  }) async {
+    Future<AssistantOutcome?> offer(List<ContactEntry> found) async {
+      if (found.length == 1) {
+        final asWritten = matchContacts(name, found).isNotEmpty;
+        return (asWritten ? then : unsure ?? then)(found.single);
+      }
+      // Picking one from the list is agreeing to it.
       return AssistantOutcome(
         tone: OutcomeTone.info,
         icon: Icons.people_alt_rounded,
         title: question,
         heard: _heard,
-        choices: saved,
+        choices: found,
         onChoice: then,
       );
     }
+
+    final saved = matchContacts(name, familyContacts, limit: 3);
+    if (saved.isNotEmpty) return offer(saved);
     final access = await actions.loadContacts();
+    final matches = matchContacts(
+      name,
+      [...familyContacts, ...access.contacts],
+      limit: 3,
+      sounds: sounds,
+    );
+    if (matches.isNotEmpty) return offer(matches);
     if (!access.granted) {
       return AssistantOutcome(
         tone: OutcomeTone.problem,
@@ -384,23 +426,29 @@ class AssistantController extends ChangeNotifier {
         buttons: [_settingsButton],
       );
     }
-    final matches = matchContacts(name, access.contacts, limit: 3);
-    if (matches.isEmpty) {
-      return _problem(
-        Icons.person_search_rounded,
-        '找不到「$name」',
-        detail: '通訊錄裡沒有這個名字',
-      );
-    }
-    if (matches.length == 1) return then(matches.single);
-    return AssistantOutcome(
-      tone: OutcomeTone.info,
-      icon: Icons.people_alt_rounded,
-      title: question,
-      heard: _heard,
-      choices: matches,
-      onChoice: then,
+    return _problem(
+      Icons.person_search_rounded,
+      '找不到「$name」',
+      detail: '通訊錄裡沒有這個名字',
     );
+  }
+
+  /// The address the family saved for [place], also when Breeze wrote the
+  /// place in other characters that sound like it.
+  String? _familyPlace(String place) {
+    final address = familyPlaces[place];
+    final table = sounds;
+    if (address != null || table == null) return address;
+    String? closest;
+    int? least;
+    for (final MapEntry(key: name, value: saved) in familyPlaces.entries) {
+      final cost = table.alike(place, name);
+      if (cost != null && (least == null || cost < least)) {
+        closest = saved;
+        least = cost;
+      }
+    }
+    return closest;
   }
 
   Future<AssistantOutcome?> _call(ContactEntry contact) async => _confirm(
@@ -631,6 +679,13 @@ class AssistantController extends ChangeNotifier {
       ],
     );
   }
+
+  /// Asks before saving someone the assistant only guessed.
+  Future<AssistantOutcome?> _askToSave(ContactEntry contact) async => _confirm(
+    '要把 ${contact.name} 設成緊急聯絡人嗎？',
+    contact.number,
+    () => _saveContact(contact),
+  );
 
   Future<AssistantOutcome?> _saveContact(ContactEntry contact) async {
     await store.save(contact);

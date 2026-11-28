@@ -6,6 +6,7 @@ import 'package:an_xin_ban/place.dart';
 import 'package:an_xin_ban/voice_command.dart';
 
 import 'support/fake_phone.dart';
+import 'support/sounds.dart';
 
 const daughter = ContactEntry(name: '女兒', numbers: ['0911-111-111']);
 
@@ -567,6 +568,166 @@ void main() {
     expect(shown().title, '這句我還不會');
     assistant.clear();
     expect(assistant.outcome, isNull);
+  });
+
+  group('by sound', () {
+    setUp(() => assistant.sounds = shippedSounds);
+
+    test('a name written in other characters reaches the person', () async {
+      await assistant.handle('打給阿銘');
+      expect(shown().title, '要打給 阿明 嗎？');
+      expect(shown().detail, '0912 345 678');
+      expect(shown().heard, '打給阿銘');
+      expect(phone.dialed, isEmpty);
+      await tap('確認');
+      expect(phone.dialed, ['0912 345 678']);
+    });
+
+    test('without the table the name must match as written', () async {
+      assistant.sounds = null;
+      await assistant.handle('打給阿銘');
+      expect(shown().title, '找不到「阿銘」');
+      await assistant.handle('我跌到了');
+      expect(shown().title, '這句我還不會');
+    });
+
+    test('names that are about as close are all offered', () async {
+      phone.contacts = const [
+        ContactEntry(name: '陳志明', numbers: ['0933']),
+        ContactEntry(name: '黃智明', numbers: ['0944']),
+      ];
+      await assistant.handle('打給志銘');
+      expect(shown().title, '要打給哪一位？');
+      expect(names(shown().choices), ['陳志明', '黃智明']);
+      await assistant.choose(shown().choices.last);
+      await tap('確認');
+      expect(phone.dialed, ['0944']);
+    });
+
+    test('a contact the family saved is found by sound too', () async {
+      assistant.familyContacts = const [
+        ContactEntry(name: '美玲', numbers: ['0955']),
+      ];
+      phone.contactsAllowed = false;
+      await assistant.handle('打電話給美齡');
+      expect(shown().title, '要打給 美玲 嗎？');
+      await assistant.handle('打電話給春嬌');
+      expect(shown().title, '需要通訊錄權限');
+    });
+
+    test('a name no one has is still not found', () async {
+      await assistant.handle('打給阿發');
+      expect(shown().title, '找不到「阿發」');
+      expect(phone.dialed, isEmpty);
+    });
+
+    test('a message goes to the person the name sounds like', () async {
+      await assistant.handle('傳簡訊給阿銘說我晚一點到');
+      expect(shown().title, '要傳簡訊給 阿明 嗎？');
+      await tap('確認');
+      expect(phone.texts.single, ('0912 345 678', '我晚一點到'));
+    });
+
+    test('a word heard wrong still does what was asked', () async {
+      await assistant.handle('開手店筒');
+      expect(phone.torch, true);
+      expect(shown().title, '手電筒開了');
+      expect(shown().heard, '開手店筒');
+
+      await assistant.handle('導行到台北車站');
+      expect(shown().title, '要開啟導航嗎？');
+      await tap('確認');
+      expect(phone.places, ['台北車站']);
+    });
+
+    test('an app is opened by the sound of its name', () async {
+      await assistant.handle('開來');
+      expect(shown().title, '要開啟 LINE 嗎？');
+      expect(phone.opened, isEmpty);
+      await tap('確認');
+      expect(phone.opened, [PhoneApp.line]);
+      expect(phone.openedNamed, isEmpty);
+    });
+
+    test('a guessed call for help offers help and calls no one', () async {
+      store.contact = daughter;
+      await assistant.initialize();
+      await assistant.handle('我跌到了');
+      expect(phone.dialed, isEmpty);
+      expect(shown().title, '需要幫忙嗎？');
+      expect(buttons(), ['打給 女兒', '打 119', '把位置傳給 女兒', '管理緊急聯絡人']);
+      await tap('打給 女兒');
+      expect(phone.dialed, ['0911-111-111']);
+    });
+
+    test('a guessed call to 119 asks first', () async {
+      await assistant.handle('快叫九護車');
+      expect(phone.dialed, isEmpty);
+      expect(shown().title, '要撥打電話嗎？');
+      expect(shown().detail, '119');
+      await tap('確認');
+      expect(phone.dialed, ['119']);
+
+      // Said as written, it is dialed at once.
+      await assistant.handle('快叫救護車');
+      expect(phone.dialed, ['119', '119']);
+    });
+
+    test('a guessed emergency contact is saved only after a yes', () async {
+      await assistant.handle('把阿銘設成緊急聯絡人');
+      expect(shown().title, '要把 阿明 設成緊急聯絡人嗎？');
+      expect(shown().detail, '0912 345 678');
+      expect(store.contact, isNull);
+      await tap('取消');
+      expect(store.contact, isNull);
+
+      await assistant.handle('把阿銘設成緊急聯絡人');
+      await tap('確認');
+      expect(store.contact?.name, '阿明');
+      expect(assistant.emergencyContact?.name, '阿明');
+      expect(shown().title, '緊急聯絡人');
+    });
+
+    test('a guessed command asks before saving a contact as written', () async {
+      await assistant.handle('把阿明設成緊急連落人');
+      expect(shown().title, '要把 阿明 設成緊急聯絡人嗎？');
+      expect(store.contact, isNull);
+      await tap('確認');
+      expect(store.contact?.name, '阿明');
+    });
+
+    test('a guessed command never removes the emergency contact', () async {
+      store.contact = daughter;
+      await assistant.initialize();
+      await assistant.handle('取消緊急連落人');
+      expect(store.contact, daughter);
+      expect(shown().title, '緊急聯絡人');
+      expect(shown().detail, '女兒 0911-111-111');
+      expect(buttons(), ['換一位', '取消緊急聯絡人']);
+    });
+
+    test('a place the family saved is found by sound', () async {
+      assistant.familyPlaces = {'診所': '彰化市中山路二段1號'};
+      await assistant.handle('帶我去診鎖');
+      expect(shown().title, '要開啟導航嗎？');
+      expect(shown().detail, '彰化市中山路二段1號');
+      await tap('確認');
+      expect(phone.places, ['彰化市中山路二段1號']);
+
+      await assistant.handle('帶我去郵局');
+      await tap('確認');
+      expect(phone.places.last, '郵局');
+    });
+
+    test('what is understood as written works as before', () async {
+      await assistant.handle('打給王小明');
+      expect(shown().title, '要打給 王小明 嗎？');
+      await assistant.handle('今天心情不錯');
+      expect(shown().title, '這句我還不會');
+      await assistant.handle('開冷氣');
+      await tap('確認');
+      expect(shown().title, '這句我還不會');
+    });
   });
 
   test('a failing phone action becomes a readable problem', () async {

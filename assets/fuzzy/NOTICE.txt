@@ -1,0 +1,16 @@
+char_readings.txt lists how Han characters are read in Taiwanese and in Mandarin, without tones. It is made by tool/build_char_readings.py.
+
+Lines starting with T (Taiwanese) are adapted from ../taigi/reminder_readings.json and distributed under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/); see ../taigi/NOTICE.txt for its sources.
+Changes: gave each character of a word the syllable it is read as in that word, and removed the tones.
+
+Lines starting with M (Mandarin) are adapted from pypinyin (https://github.com/mozillazg/python-pinyin), which takes its readings from pinyin-data (https://github.com/mozillazg/pinyin-data) and phrase-pinyin-data (https://github.com/mozillazg/phrase-pinyin-data).
+Changes: removed the tones and kept, for each character, its first reading and the other readings in common use.
+pypinyin is distributed under the MIT License:
+
+Copyright (c) 2016 mozillazg, 闲耘 <hotoo.cn@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

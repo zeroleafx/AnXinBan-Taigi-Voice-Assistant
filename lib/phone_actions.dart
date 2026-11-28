@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'app_matcher.dart';
 import 'contact_matcher.dart';
 import 'place.dart';
+import 'sound_table.dart';
 import 'torch_channel.dart';
 import 'voice_command.dart';
 
@@ -112,16 +113,22 @@ class DevicePhoneActions implements PhoneActions {
 
   @override
   Future<String?> openNamedApp(String name) async {
+    final sounds = await SoundTable.load();
     if (_android) {
-      final app = matchApp(name, await _installedApps());
+      final app = matchApp(name, await _installedApps(), sounds: sounds);
       if (app == null || !await _launchPackage(app.package)) return null;
       return app.label;
     }
     // iOS cannot list apps, so only apps with a known link can be opened.
     final asked = normalizeTranscript(name);
-    for (final (names, label, link) in _iosApps) {
-      if (!names.contains(asked)) continue;
-      return await _open(Uri.parse(link), _app) ? label : null;
+    bool called(Set<String> names) => names.contains(asked);
+    bool soundsLike(Set<String> names) =>
+        sounds != null && names.any((n) => sounds.alike(asked, n) != null);
+    for (final fits in [called, soundsLike]) {
+      for (final (names, label, link) in _iosApps) {
+        if (!fits(names)) continue;
+        return await _open(Uri.parse(link), _app) ? label : null;
+      }
     }
     return null;
   }

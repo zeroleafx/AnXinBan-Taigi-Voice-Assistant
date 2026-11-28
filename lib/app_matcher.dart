@@ -1,3 +1,4 @@
+import 'sound_table.dart';
 import 'voice_command.dart';
 
 /// An app on the phone that can be opened from its home screen.
@@ -10,7 +11,14 @@ class InstalledApp {
 }
 
 /// The installed app a spoken name most likely means, or null.
-InstalledApp? matchApp(String spoken, Iterable<InstalledApp> apps) {
+///
+/// With [sounds], a name that fits no app as written is matched by how it
+/// sounds: "瞎皮" opens 蝦皮購物.
+InstalledApp? matchApp(
+  String spoken,
+  Iterable<InstalledApp> apps, {
+  SoundTable? sounds,
+}) {
   final asked = normalizeTranscript(spoken);
   if (asked.isEmpty) return null;
   // Everything the spoken name may be called on a home screen.
@@ -46,7 +54,57 @@ InstalledApp? matchApp(String spoken, Iterable<InstalledApp> apps) {
       bestScore = score;
     }
   }
+  if (best != null || sounds == null) return best;
+
+  // No app is called that, so go by sound: "瞎皮" is 蝦皮, and "象機" is
+  // 相機, which this phone may call 照相機.
+  final alike = {asked: 0};
+  for (final group in _sameApp) {
+    if (!group.any((name) => sounds.alike(asked, name) != null)) continue;
+    for (final name in group) {
+      // As above, the word that was said counts for more than another name
+      // for it.
+      alike.putIfAbsent(name, () => sounds.alike(asked, name) ?? 3 * _kind);
+    }
+  }
+  int? least;
+  for (final app in apps) {
+    final label = normalizeTranscript(app.label);
+    for (final MapEntry(key: name, value: penalty) in alike.entries) {
+      final distance = _soundDistance(name, label, sounds);
+      if (distance == null) continue;
+      final shorter =
+          distance + penalty == least &&
+          best != null &&
+          app.label.length < best.label.length;
+      if (least == null || distance + penalty < least || shorter) {
+        best = app;
+        least = distance + penalty;
+      }
+    }
+  }
   return best;
+}
+
+/// Each kind of match by sound is this much further off than the one
+/// before, whatever the sounds cost.
+const _kind = 1000;
+
+/// How far a spoken [name] is from an app's [label] by sound, or null when
+/// they are not alike: least for the whole label, then for a label that
+/// has the name in it, then for a name that has the label in it.
+int? _soundDistance(String name, String label, SoundTable sounds) {
+  final whole = sounds.alike(name, label);
+  if (whole != null) return whole;
+  if (name.length >= 2 && name.length < label.length) {
+    final cost = sounds.within(name, label);
+    if (cost != null) return _kind + cost;
+  }
+  if (label.length >= 2 && label.length < name.length) {
+    final cost = sounds.within(label, name);
+    if (cost != null) return 2 * _kind + cost;
+  }
+  return null;
 }
 
 /// Names that mean the same app. Phone makers label their own apps
